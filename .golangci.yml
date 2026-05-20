@@ -18,22 +18,6 @@ formatters:
     - goimports
     - gci
 
-linters-settings:
-  revive:
-    rules:
-      - name: exported
-        arguments:
-          - disableStutteringCheck
-
-formatters-settings:
-  gci:
-    sections:
-      - standard
-      - default
-      - prefix(github.com/peczenyj/go-claimcheck)
-  gofmt:
-    simplify: true
-
 issues:
   exclude-use-default: false
   max-issues-per-linter: 0
