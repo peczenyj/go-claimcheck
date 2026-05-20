@@ -1,0 +1,38 @@
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+
+linters:
+  enable:
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - bodyclose
+    - gofmt
+    - goimports
+    - gci
+    - misspell
+    - revive
+    - unconvert
+
+linters-settings:
+  gci:
+    sections:
+      - standard
+      - default
+      - prefix(github.com/peczenyj/go-claimcheck)
+  revive:
+    rules:
+      - name: exported
+        arguments:
+          - disableStutteringCheck
+  gofmt:
+    simplify: true
+
+issues:
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0
