@@ -5,7 +5,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/go-openapi/testify/assert"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestSerializers(t *testing.T) {

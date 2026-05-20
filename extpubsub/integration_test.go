@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/go-openapi/testify/assert"
+	"github.com/stretchr/testify/assert"
 	"gocloud.dev/blob/memblob"
 	"gocloud.dev/pubsub"
 )

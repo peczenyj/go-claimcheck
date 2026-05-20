@@ -2,7 +2,6 @@ with-expecter: true
 all: true
 dir: mocks
 outpkg: mocks
-filename: "{{.InterfaceName | lowcamel}}.go"
 mockname: "Mock{{.InterfaceName}}"
 replace-type:
-  - "github.com/peczenyj/go-claimcheck": "github.com/peczenyj/go-claimcheck/mocks"
+  - "github.com/peczenyj/go-claimcheck=github.com/peczenyj/go-claimcheck/mocks"

@@ -1,7 +1,6 @@
 package extpubsub
 
 import (
-	"bufio"
 	"compress/gzip"
 	"encoding/binary"
 	"encoding/json"
@@ -31,15 +30,15 @@ func (s *JSONLinesSerializer) Encode(w io.Writer, msgs []*Message) error {
 // Decode deserializes messages from JSON lines.
 func (s *JSONLinesSerializer) Decode(r io.Reader) ([]*Message, error) {
 	var msgs []*Message
-	scanner := bufio.NewScanner(r)
-	for scanner.Scan() {
+	dec := json.NewDecoder(r)
+	for dec.More() {
 		var m Message
-		if err := json.Unmarshal(scanner.Bytes(), &m); err != nil {
+		if err := dec.Decode(&m); err != nil {
 			return nil, err
 		}
 		msgs = append(msgs, &m)
 	}
-	return msgs, scanner.Err()
+	return msgs, nil
 }
 
 // LengthPrefixedSerializer implements Serializer using binary length prefixes.
@@ -78,6 +77,9 @@ func (s *LengthPrefixedSerializer) Decode(r io.Reader) ([]*Message, error) {
 				break
 			}
 			return nil, err
+		}
+		if length < 0 {
+			return nil, io.ErrUnexpectedEOF
 		}
 		data := make([]byte, length)
 		if _, err := io.ReadFull(r, data); err != nil {

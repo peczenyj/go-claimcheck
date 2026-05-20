@@ -28,10 +28,8 @@ func newSubscription(base driver.Subscription, bucket *blob.Bucket, opts Options
 }
 
 func (s *subscription) ReceiveBatch(ctx context.Context, maxMessages int) ([]*driver.Message, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	// 1. If we have buffered messages, return them
+	s.mu.Lock()
 	if len(s.buffer) > 0 {
 		n := maxMessages
 		if len(s.buffer) < n {
@@ -39,10 +37,12 @@ func (s *subscription) ReceiveBatch(ctx context.Context, maxMessages int) ([]*dr
 		}
 		res := s.buffer[:n]
 		s.buffer = s.buffer[n:]
+		s.mu.Unlock()
 		return res, nil
 	}
+	s.mu.Unlock()
 
-	// 2. Receive from underlying subscription
+	// 2. Receive from underlying subscription (without lock)
 	msgs, err := s.Subscription.ReceiveBatch(ctx, maxMessages)
 	if err != nil {
 		return nil, err
@@ -65,6 +65,8 @@ func (s *subscription) ReceiveBatch(ctx context.Context, maxMessages int) ([]*dr
 	}
 
 	// 3. If we got more than maxMessages, buffer the rest
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if len(finalMsgs) > maxMessages {
 		s.buffer = append(s.buffer, finalMsgs[maxMessages:]...)
 		return finalMsgs[:maxMessages], nil
