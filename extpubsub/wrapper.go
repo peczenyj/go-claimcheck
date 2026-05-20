@@ -36,7 +36,7 @@ type Batch struct {
 	ContentEncoding string
 	FileSize        int64
 	Checksum        string
-	
+
 	// Original is the control message received from the queue.
 	Original *pubsub.Message
 
@@ -47,7 +47,7 @@ type Batch struct {
 // ReceiveBatch waits for a message. If it's a control message, it returns a Batch.
 // If it's a normal message, it returns a Batch with a single message (Original).
 func (s *Subscription) ReceiveBatch(ctx context.Context) (*Batch, error) {
-	m, err := s.Subscription.Receive(ctx)
+	m, err := s.Receive(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +56,7 @@ func (s *Subscription) ReceiveBatch(ctx context.Context) (*Batch, error) {
 	if m.Metadata[prefix+"v"] == "1" {
 		count, _ := strconv.Atoi(m.Metadata[prefix+"msg_count"])
 		size, _ := strconv.ParseInt(m.Metadata[prefix+"file_size"], 10, 64)
-		
+
 		return &Batch{
 			URL:             m.Metadata[prefix+"url"],
 			MessageCount:    count,
@@ -90,7 +90,7 @@ func (b *Batch) Unroll(ctx context.Context) ([]*Message, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	return b.opts.Serializer.Decode(r)
 }

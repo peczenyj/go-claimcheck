@@ -1,3 +1,4 @@
+// Package extpubsub provides a claim-check implementation for Go CDK pubsub.
 package extpubsub
 
 import (

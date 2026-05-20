@@ -1,34 +1,36 @@
+version: "2"
+
 run:
   timeout: 5m
   modules-download-mode: readonly
 
 linters:
   enable:
-    - errcheck
-    - gosimple
-    - govet
-    - ineffassign
-    - staticcheck
-    - unused
     - bodyclose
-    - gofmt
-    - goimports
-    - gci
     - misspell
     - revive
     - unconvert
+    # Enabled by default in v2: errcheck, govet, ineffassign, staticcheck, unused
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+    - gci
 
 linters-settings:
-  gci:
-    sections:
-      - standard
-      - default
-      - prefix(github.com/peczenyj/go-claimcheck)
   revive:
     rules:
       - name: exported
         arguments:
           - disableStutteringCheck
+
+formatters-settings:
+  gci:
+    sections:
+      - standard
+      - default
+      - prefix(github.com/peczenyj/go-claimcheck)
   gofmt:
     simplify: true
 

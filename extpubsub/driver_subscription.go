@@ -82,13 +82,13 @@ func (s *subscription) unroll(ctx context.Context, m *driver.Message) ([]*driver
 	if err != nil {
 		return nil, fmt.Errorf("failed to create blob reader: %w", err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	tr, err := s.opts.Transformer.WrapReader(r)
 	if err != nil {
 		return nil, fmt.Errorf("failed to wrap reader: %w", err)
 	}
-	defer tr.Close()
+	defer func() { _ = tr.Close() }()
 
 	// 2. Decode messages
 	extMsgs, err := s.opts.Serializer.Decode(tr)

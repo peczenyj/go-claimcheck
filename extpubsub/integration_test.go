@@ -57,7 +57,7 @@ func TestIntegration_ExplicitBatch(t *testing.T) {
 	// We use the driver to create the public topic/sub
 	psTopic := NewTopic(drv, bucket, opts)
 	psSub := NewSubscription(drv, bucket, opts)
-	
+
 	wrapperSub := WrapSubscription(psSub, bucket, opts)
 
 	// 3. Send data
@@ -76,6 +76,6 @@ func TestIntegration_ExplicitBatch(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Len(t, msgs, 1)
 	assert.Equal(t, []byte("batched data"), msgs[0].Body)
-	
+
 	batch.Ack()
 }
