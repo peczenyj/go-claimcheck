@@ -1,0 +1,37 @@
+version: '3'
+
+tasks:
+  default:
+    cmds:
+      - task: test
+      - task: lint
+
+  test:
+    desc: Run tests using gotestsum
+    cmds:
+      - gotestsum --format pkgname-and-test-fails -- ./...
+
+  lint:
+    desc: Run golangci-lint
+    cmds:
+      - golangci-lint run ./...
+
+  format:
+    desc: Format code using golangci-lint
+    cmds:
+      - golangci-lint run --fix ./...
+
+  mock:
+    desc: Generate mocks using mockery
+    cmds:
+      - mockery
+
+  changelog:
+    desc: Generate changelog using git-cliff
+    cmds:
+      - git-cliff -o CHANGELOG.md
+
+  tidy:
+    desc: Tidy go modules
+    cmds:
+      - go mod tidy

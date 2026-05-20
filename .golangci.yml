@@ -1,0 +1,19 @@
+version: "2"
+
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+
+linters:
+  enable:
+    - bodyclose
+    - misspell
+    - revive
+    - unconvert
+    # Enabled by default in v2: errcheck, govet, ineffassign, staticcheck, unused
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+    - gci
