@@ -17,8 +17,3 @@ formatters:
     - gofmt
     - goimports
     - gci
-
-issues:
-  exclude-use-default: false
-  max-issues-per-linter: 0
-  max-same-issues: 0
