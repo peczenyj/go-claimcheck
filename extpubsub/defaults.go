@@ -4,6 +4,7 @@ import (
 	"compress/gzip"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"io"
 )
 
@@ -73,7 +74,7 @@ func (s *LengthPrefixedSerializer) Decode(r io.Reader) ([]*Message, error) {
 	for {
 		var length int32
 		if err := binary.Read(r, binary.BigEndian, &length); err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			return nil, err
