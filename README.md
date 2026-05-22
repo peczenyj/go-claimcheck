@@ -46,6 +46,7 @@ bucket := memblob.OpenBucket(nil)
 
 // Wrap with Claim-Check logic
 opts := extpubsub.Options{
+    MinSize:     1024 * 1024,            // Offload only if > 1MB
     Transformer: extpubsub.NewGzipTransformer(), // Compress blobs
 }
 topic := extpubsub.NewTopic(baseTopic, bucket, opts)
@@ -65,6 +66,31 @@ sub := extpubsub.NewSubscription(baseSub, bucket, opts)
 m, err := sub.Receive(ctx)
 fmt.Printf("Received: %s\n", m.Body)
 m.Ack()
+```
+
+### 3. Explicit Batch Handling (Advanced)
+
+For manual control or when processing messages in bulk from a single blob:
+
+```go
+import "github.com/peczenyj/go-claimcheck/extpubsub"
+
+// Wrap the *pubsub.Subscription for advanced features
+extSub := extpubsub.WrapSubscription(sub, bucket, opts)
+
+// Receive the raw batch control message
+batch, err := extSub.ReceiveBatch(ctx)
+if err != nil { /* ... */ }
+
+fmt.Printf("Batch URL: %s, Messages: %d\n", batch.URL, batch.MessageCount)
+
+// Download and unroll all messages at once
+msgs, err := batch.Unroll(ctx)
+for _, m := range msgs {
+    fmt.Printf("Unrolled Body: %s\n", m.Body)
+}
+
+batch.Ack() // Acks the underlying control message
 ```
 
 ## Development
