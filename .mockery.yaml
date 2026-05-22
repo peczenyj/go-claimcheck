@@ -1,7 +1,0 @@
-with-expecter: true
-all: true
-dir: mocks
-outpkg: mocks
-mockname: "Mock{{.InterfaceName}}"
-replace-type:
-  - "github.com/peczenyj/go-claimcheck=github.com/peczenyj/go-claimcheck/mocks"

@@ -21,11 +21,6 @@ tasks:
     cmds:
       - golangci-lint run --fix ./...
 
-  mock:
-    desc: Generate mocks using mockery
-    cmds:
-      - mockery
-
   changelog:
     desc: Generate changelog using git-cliff
     cmds:
