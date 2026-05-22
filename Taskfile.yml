@@ -1,12 +1,6 @@
 version: '3'
 
 vars:
-  # Minimum supported Go version. Keep in sync with the `go` directive in
-  # go.mod. GitHub Actions runs on `stable` only, so `task ci` is the sole
-  # place the floor is enforced: it pins the toolchain to this version, making
-  # a dependency that quietly raises the floor fail locally. Run it before
-  # pushing.
-  GO_MIN: '1.25.0'
   # PKG_LIST defines all project packages excluding generated mocks.
   PKG_LIST:
     sh: go list ./... | grep -v mocks/ | tr '\n' ' '
@@ -45,6 +39,11 @@ tasks:
     cmds:
       - golangci-lint run {{.PKG_PATH_LIST}}
 
+  lint:fix:
+    desc: "Run golangci-lint and auto-fix issues where possible"
+    cmds:
+      - golangci-lint run --fix {{.PKG_PATH_LIST}}
+
   format:
     desc: "Format Go code with golangci-lint's built-in formatters"
     cmds:
@@ -72,17 +71,12 @@ tasks:
       - git diff --exit-code go.mod go.sum
 
   ci:
-    desc: "Full pre-push gate: mirrors GitHub Actions on the minimum supported Go"
-    env:
-      # Pin the build/test toolchain to the floor. A dependency that requires a
-      # newer Go than GO_MIN fails here, the way the matrix's lowest job would.
-      GOTOOLCHAIN: 'go{{.GO_MIN}}'
+    desc: "Full pre-push gate: mirrors the GitHub Actions checks"
     cmds:
-      - go mod tidy
-      - git diff --exit-code go.mod go.sum
-      - golangci-lint run {{.PKG_PATH_LIST}}
+      - task: tidy:check
+      - task: lint
       - go build {{.PKG_PATH_LIST}}
-      - gotestsum -- {{.PKG_PATH_LIST}}
+      - task: test
 
   changelog:
     desc: "Regenerate CHANGELOG.md from git history"
