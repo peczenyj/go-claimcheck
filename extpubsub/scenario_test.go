@@ -13,7 +13,7 @@ import (
 	"github.com/peczenyj/go-claimcheck/extpubsub"
 )
 
-func TestIntegration_Transparent(t *testing.T) {
+func TestScenario_Transparent(t *testing.T) {
 	ctx := context.Background()
 
 	// 1. Setup base MemDriver and memblob
@@ -47,7 +47,7 @@ func TestIntegration_Transparent(t *testing.T) {
 	}
 }
 
-func TestIntegration_Transparent_PartialAck(t *testing.T) {
+func TestScenario_Transparent_PartialAck(t *testing.T) {
 	ctx := context.Background()
 	drv := &extpubsub.MemDriver{}
 	bucket := memblob.OpenBucket(nil)
@@ -96,7 +96,7 @@ func TestIntegration_Transparent_PartialAck(t *testing.T) {
 	assert.Equal(t, "base-ack", drv.Acks()[0])
 }
 
-func TestIntegration_Transparent_Nack(t *testing.T) {
+func TestScenario_Transparent_Nack(t *testing.T) {
 	ctx := context.Background()
 	drv := &extpubsub.MemDriver{}
 	bucket := memblob.OpenBucket(nil)
@@ -131,7 +131,7 @@ func TestIntegration_Transparent_Nack(t *testing.T) {
 	}
 }
 
-func TestIntegration_ExplicitBatch(t *testing.T) {
+func TestScenario_ExplicitBatch(t *testing.T) {
 	ctx := context.Background()
 
 	// 1. Setup

@@ -44,9 +44,9 @@ The project uses [Task](https://taskfile.dev/) for workflow automation. A `Makef
 ### Testing Practices
 
 - Tests are located alongside the source code in `*_test.go` files.
-- Integration tests are found in `extpubsub/integration_test.go`.
+- Scenario tests (End-to-End flows with in-memory drivers) are found in `extpubsub/scenario_test.go`.
 - Use `testify` for assertions.
-- When adding new features, ensure appropriate unit and/or integration tests are included.
+- When adding new features, ensure appropriate unit and/or scenario tests are included.
 - For components requiring external dependencies (like cloud providers), use the Go CDK `memdriver` or `memblob` for in-memory testing when possible.
 
 ### Contribution Guidelines
