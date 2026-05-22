@@ -48,4 +48,4 @@ jobs:
           version: 3.x
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Run unit tests
-        run: task test -- -race -covermode=atomic -count=1 -coverprofile=coverage.txt
+        run: task test:coverage

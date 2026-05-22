@@ -25,6 +25,16 @@ tasks:
     cmds:
       - gotestsum -- {{.PKG_PATH_LIST}} {{.CLI_ARGS}}
 
+  test:race:
+    desc: "Run unit tests with race detector"
+    cmds:
+      - gotestsum -- -race {{.PKG_PATH_LIST}} {{.CLI_ARGS}}
+
+  test:coverage:
+    desc: "Run unit tests with race detector and coverage report"
+    cmds:
+      - gotestsum -- -race -covermode=atomic -count=1 -coverprofile=coverage.txt {{.PKG_PATH_LIST}} {{.CLI_ARGS}}
+
   lint:
     desc: "Run golangci-lint"
     cmds:
