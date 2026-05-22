@@ -7,9 +7,9 @@ vars:
   # a dependency that quietly raises the floor fail locally. Run it before
   # pushing.
   GO_MIN: '1.25.0'
-  # PKG_LIST defines all project packages.
+  # PKG_LIST defines all project packages excluding generated mocks.
   PKG_LIST:
-    sh: go list ./... | tr '\n' ' '
+    sh: go list ./... | grep -v mocks/ | tr '\n' ' '
   # PKG_PATH_LIST defines the directory paths for the packages in PKG_LIST.
   PKG_PATH_LIST:
     sh: go list -f '{{"{{.Dir}}"}}' {{.PKG_LIST}} | tr '\n' ' '
