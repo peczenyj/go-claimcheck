@@ -7,8 +7,8 @@ import (
 
 // Message is a serializable representation of a pubsub message.
 type Message struct {
-	Body     []byte
-	Metadata map[string]string
+	Body     []byte            `json:"body"`
+	Metadata map[string]string `json:"metadata,omitempty"`
 }
 
 // Serializer defines how a slice of messages is encoded into a blob.

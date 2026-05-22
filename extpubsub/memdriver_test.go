@@ -12,6 +12,8 @@ type memDriver struct {
 	mu     sync.Mutex
 	msgs   []*driver.Message
 	closed bool
+	acks   []driver.AckID
+	nacks  []driver.AckID
 }
 
 func (m *memDriver) SendBatch(_ context.Context, msgs []*driver.Message) error {
@@ -48,10 +50,22 @@ func (m *memDriver) IsEmpty() bool {
 }
 
 // Subscription methods
-func (m *memDriver) CanNack() bool                                       { return false }
-func (m *memDriver) SendAcks(_ context.Context, _ []driver.AckID) error  { return nil }
-func (m *memDriver) SendNacks(_ context.Context, _ []driver.AckID) error { return nil }
-func (m *memDriver) IsRetryable(_ error) bool                            { return false }
-func (m *memDriver) As(_ interface{}) bool                               { return false }
-func (m *memDriver) ErrorAs(_ error, _ interface{}) bool                 { return false }
-func (m *memDriver) ErrorCode(_ error) gcerrors.ErrorCode                { return gcerrors.Unknown }
+func (m *memDriver) CanNack() bool { return true }
+
+func (m *memDriver) SendAcks(_ context.Context, ids []driver.AckID) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.acks = append(m.acks, ids...)
+	return nil
+}
+
+func (m *memDriver) SendNacks(_ context.Context, ids []driver.AckID) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.nacks = append(m.nacks, ids...)
+	return nil
+}
+func (m *memDriver) IsRetryable(_ error) bool             { return false }
+func (m *memDriver) As(_ interface{}) bool                { return false }
+func (m *memDriver) ErrorAs(_ error, _ interface{}) bool  { return false }
+func (m *memDriver) ErrorCode(_ error) gcerrors.ErrorCode { return gcerrors.Unknown }

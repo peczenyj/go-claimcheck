@@ -75,6 +75,20 @@ func (s *subscription) ReceiveBatch(ctx context.Context, maxMessages int) ([]*dr
 	return finalMsgs, nil
 }
 
+// ackTracker tracks the status of a set of messages unrolled from a single blob.
+// It ensures the underlying control message is only acknowledged when all unrolled messages are handled.
+type ackTracker struct {
+	mu      sync.Mutex
+	baseID  driver.AckID
+	pending int
+	nacked  bool
+}
+
+// syntheticAckID is a wrapper around the tracker used as an AckID for unrolled messages.
+type syntheticAckID struct {
+	tracker *ackTracker
+}
+
 func (s *subscription) unroll(ctx context.Context, m *driver.Message) ([]*driver.Message, error) {
 	prefix := s.opts.MetadataPrefix
 	blobName := m.Metadata[prefix+"url"]
@@ -99,21 +113,65 @@ func (s *subscription) unroll(ctx context.Context, m *driver.Message) ([]*driver
 	}
 
 	// 3. Convert back to driver.Message
-	// Note: We might want to preserve the AckID of the control message for ALL unrolled messages.
-	// But in Go CDK, AckID is usually tied to the specific message.
-	// If the user Acks ONE of the unrolled messages, should we Ack the whole blob?
-	// Standard Extended Client behavior: Ack the control message when all unrolled messages are handled?
-	// For simplicity now, we attach the same AckID to all.
+	// We track acks so that the underlying control message is only acked
+	// when ALL unrolled messages have been acked by the user.
+	tracker := &ackTracker{
+		baseID:  m.AckID,
+		pending: len(extMsgs),
+	}
+
 	res := make([]*driver.Message, len(extMsgs))
 	for i, em := range extMsgs {
 		res[i] = &driver.Message{
 			Body:     em.Body,
 			Metadata: em.Metadata,
-			AckID:    m.AckID, // shared AckID
+			AckID:    syntheticAckID{tracker: tracker},
 		}
 	}
 
 	return res, nil
+}
+
+func (s *subscription) SendAcks(ctx context.Context, ackIDs []driver.AckID) error {
+	var baseAcks []driver.AckID
+	for _, id := range ackIDs {
+		if syn, ok := id.(syntheticAckID); ok {
+			syn.tracker.mu.Lock()
+			syn.tracker.pending--
+			if syn.tracker.pending == 0 && !syn.tracker.nacked {
+				baseAcks = append(baseAcks, syn.tracker.baseID)
+			}
+			syn.tracker.mu.Unlock()
+		} else {
+			baseAcks = append(baseAcks, id)
+		}
+	}
+
+	if len(baseAcks) > 0 {
+		return s.Subscription.SendAcks(ctx, baseAcks)
+	}
+	return nil
+}
+
+func (s *subscription) SendNacks(ctx context.Context, ackIDs []driver.AckID) error {
+	var baseNacks []driver.AckID
+	for _, id := range ackIDs {
+		if syn, ok := id.(syntheticAckID); ok {
+			syn.tracker.mu.Lock()
+			if !syn.tracker.nacked {
+				syn.tracker.nacked = true
+				baseNacks = append(baseNacks, syn.tracker.baseID)
+			}
+			syn.tracker.mu.Unlock()
+		} else {
+			baseNacks = append(baseNacks, id)
+		}
+	}
+
+	if len(baseNacks) > 0 {
+		return s.Subscription.SendNacks(ctx, baseNacks)
+	}
+	return nil
 }
 
 func (s *subscription) Close() error {
