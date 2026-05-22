@@ -43,6 +43,10 @@ type Options struct {
 	MetadataPrefix string
 	// DisableTransparentUnrolling if true, the driver will not automatically download and unroll blobs.
 	DisableTransparentUnrolling bool
+	// MinSize is the threshold in bytes for offloading messages to blob storage.
+	// If the total size of a batch of messages is smaller than this, they are sent directly.
+	// Defaults to 0 (always offload).
+	MinSize int
 }
 
 // SetDefaults fills in default values for Options.

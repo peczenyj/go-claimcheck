@@ -8,8 +8,9 @@ This document provides architectural overview, development workflows, and coding
 
 ### Core Components (package `extpubsub`)
 
-- **Topic Wrapper:** Intercepts `Send` calls. If a message is large (or based on configuration), it serializes the payload, uploads it to a `blob.Bucket`, and sends a control message with the blob URL and metadata.
+- **Topic Wrapper:** Intercepts `Send` calls. If a message batch exceeds a configurable `MinSize` threshold (in `Options`), it serializes the payload, uploads it to a `blob.Bucket`, and sends a control message with the blob URL and metadata. If below the threshold, messages are sent directly.
 - **Subscription Wrapper:** Intercepts `Receive` calls. It detects control messages, automatically downloads the corresponding blob from the `blob.Bucket`, and "unrolls" it back into the original messages.
+- **Explicit Batch Wrapper:** A second layer of the API (via `WrapSubscription`) that allows users to receive the raw control message as a `Batch`, providing metadata (URL, checksum, count) and manual `Unroll` capabilities.
 - **Serializers:** Define how message batches are encoded into blobs (e.g., JSON Lines).
 - **Transformers:** Middleware for blob data, such as Gzip compression.
 

@@ -26,6 +26,17 @@ func newTopic(base driver.Topic, bucket *blob.Bucket, opts Options) driver.Topic
 }
 
 func (t *topic) SendBatch(ctx context.Context, msgs []*driver.Message) error {
+	// 0. Check if we should offload based on size
+	if t.opts.MinSize > 0 {
+		var totalSize int
+		for _, m := range msgs {
+			totalSize += len(m.Body)
+		}
+		if totalSize < t.opts.MinSize {
+			return t.Topic.SendBatch(ctx, msgs)
+		}
+	}
+
 	// 1. Generate unique blob name
 	blobName := uuid.New().String()
 
