@@ -37,4 +37,4 @@ formatters:
       sections:
         - standard
         - default
-        - prefix(github.com/peczenyj/runtimevar-contrib)
+        - prefix(github.com/peczenyj/go-claimcheck)
