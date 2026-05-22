@@ -50,6 +50,16 @@ tasks:
     cmds:
       - golangci-lint fmt {{.PKG_PATH_LIST}}
 
+  generate:
+    desc: "Regenerate mocks with mockery (skipped when .mockery.yaml is absent)"
+    cmds:
+      - mockery
+    status:
+      # `status` marks a task up-to-date (and skips it) when every command
+      # exits 0. The negated test exits 0 only when .mockery.yaml is missing,
+      # so mockery runs exactly when the config file is present.
+      - test ! -f .mockery.yaml
+
   tidy:
     desc: "Run go mod tidy"
     cmds:
