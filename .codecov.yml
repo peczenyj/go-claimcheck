@@ -1,0 +1,20 @@
+# Codecov configuration to set thresholds and ignore generated/external code.
+# Documentation: https://docs.codecov.com/docs/codecovyml-reference
+
+coverage:
+  status:
+    project:
+      default:
+        # The overall project coverage must be at least 70%
+        target: 70%
+        # Allow for a 1% drop from the target before failing the check
+        threshold: 1%
+    patch:
+      default:
+        # The coverage of the code changed in the PR must be at least 70%
+        target: 70%
+
+ignore:
+  - "vendor/**/*"
+  - "mocks/**/*"
+  - "**/*_test.go"
