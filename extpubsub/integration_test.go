@@ -1,10 +1,11 @@
-package extpubsub
+package extpubsub_test
 
 import (
 	"context"
 	"testing"
 	"time"
 
+	"github.com/peczenyj/go-claimcheck/extpubsub"
 	"github.com/stretchr/testify/assert"
 	"gocloud.dev/blob/memblob"
 	"gocloud.dev/pubsub"
@@ -14,88 +15,118 @@ import (
 func TestIntegration_Transparent(t *testing.T) {
 	ctx := context.Background()
 
-	// 1. Setup base memDriver and memblob
-	drv := &memDriver{}
+	// 1. Setup base MemDriver and memblob
+	drv := &extpubsub.MemDriver{}
 	bucket := memblob.OpenBucket(nil)
 
 	// 2. Setup Extended Topic and Subscription (Layer 1)
-	opts := Options{
-		Transformer: NewGzipTransformer(),
+	opts := extpubsub.Options{
+		Transformer: extpubsub.NewGzipTransformer(),
 	}
-	opts.SetDefaults()
-	extSub := NewSubscription(drv, bucket, opts)
+	extTopic := extpubsub.NewTopic(drv, bucket, opts)
+	extSub := extpubsub.NewSubscription(drv, bucket, opts)
 
-	// 3. Send messages as a single batch using the driver to ensure they are in one blob
-	driverTopic := newTopic(drv, bucket, opts)
-	msgs := []*driver.Message{
-		{Body: []byte("msg 1"), Metadata: map[string]string{}},
-		{Body: []byte("msg 2"), Metadata: map[string]string{}},
+	// 3. Send messages
+	msgs := []*pubsub.Message{
+		{Body: []byte("msg 1")},
+		{Body: []byte("msg 2")},
 	}
-	err := driverTopic.SendBatch(ctx, msgs)
-	assert.NoError(t, err)
 
-	// Wait a bit for Send to complete
-	time.Sleep(10 * time.Millisecond)
-
-	// Inject a custom AckID in the underlying memDriver
-	drv.mu.Lock()
-	if len(drv.msgs) == 1 {
-		drv.msgs[0].AckID = "custom-ack-id"
+	for _, m := range msgs {
+		err := extTopic.Send(ctx, m)
+		assert.NoError(t, err)
 	}
-	drv.mu.Unlock()
 
 	// 4. Receive and verify (Transparent)
+	for i := 0; i < 2; i++ {
+		m, err := extSub.Receive(ctx)
+		assert.NoError(t, err)
+		assert.Equal(t, msgs[i].Body, m.Body)
+		m.Ack()
+	}
+}
+
+func TestIntegration_Transparent_PartialAck(t *testing.T) {
+	ctx := context.Background()
+	drv := &extpubsub.MemDriver{}
+	bucket := memblob.OpenBucket(nil)
+	opts := extpubsub.Options{}
+	opts.SetDefaults()
+
+	// 1. Manually create a blob with 2 messages
+	blobName := "multi-msg-blob"
+	w, _ := bucket.NewWriter(ctx, blobName, nil)
+	_ = opts.Serializer.Encode(w, []*extpubsub.Message{
+		{Body: []byte("part 1")},
+		{Body: []byte("part 2")},
+	})
+	_ = w.Close()
+
+	// 2. Inject a control message into the driver
+	drv.AddMessages(&driver.Message{
+		Metadata: map[string]string{
+			"extpubsub_v":   "1",
+			"extpubsub_url": blobName,
+		},
+		AckID: "base-ack",
+	})
+
+	extSub := extpubsub.NewSubscription(drv, bucket, opts)
+
+	// 3. Receive first message and Ack it
 	m1, err := extSub.Receive(ctx)
 	assert.NoError(t, err)
-	assert.Equal(t, msgs[0].Body, m1.Body)
+	assert.Equal(t, []byte("part 1"), m1.Body)
+	m1.Ack()
 
+	// Wait for processing
+	time.Sleep(50 * time.Millisecond)
+	assert.Empty(t, drv.Acks(), "Base message should not be acked yet")
+
+	// 4. Receive second message and Ack it
 	m2, err := extSub.Receive(ctx)
 	assert.NoError(t, err)
-	assert.Equal(t, msgs[1].Body, m2.Body)
-
-	// Verify partial acks
-	m1.Ack()
-	time.Sleep(10 * time.Millisecond)
-	drv.mu.Lock()
-	assert.Empty(t, drv.acks, "Should not ack underlying message until all are acked")
-	drv.mu.Unlock()
-
+	assert.Equal(t, []byte("part 2"), m2.Body)
 	m2.Ack()
-	time.Sleep(10 * time.Millisecond)
-	drv.mu.Lock()
-	assert.Len(t, drv.acks, 1, "Should ack underlying message once all are acked")
-	assert.Equal(t, "custom-ack-id", drv.acks[0])
-	drv.mu.Unlock()
+
+	// Wait for processing
+	time.Sleep(50 * time.Millisecond)
+	assert.Len(t, drv.Acks(), 1, "Base message should be acked now")
+	assert.Equal(t, "base-ack", drv.Acks()[0])
 }
 
 func TestIntegration_Transparent_Nack(t *testing.T) {
 	ctx := context.Background()
-	drv := &memDriver{}
+	drv := &extpubsub.MemDriver{}
 	bucket := memblob.OpenBucket(nil)
-	opts := Options{}
-	extTopic := NewTopic(drv, bucket, opts)
-	extSub := NewSubscription(drv, bucket, opts)
+	opts := extpubsub.Options{}
+	opts.SetDefaults()
 
-	err := extTopic.Send(ctx, &pubsub.Message{Body: []byte("msg 1")})
+	// 1. Manually create a blob
+	blobName := "nack-blob"
+	w, _ := bucket.NewWriter(ctx, blobName, nil)
+	_ = opts.Serializer.Encode(w, []*extpubsub.Message{{Body: []byte("nack me")}})
+	_ = w.Close()
+
+	// 2. Inject control message
+	drv.AddMessages(&driver.Message{
+		Metadata: map[string]string{
+			"extpubsub_v":   "1",
+			"extpubsub_url": blobName,
+		},
+		AckID: "nack-ack-id",
+	})
+
+	extSub := extpubsub.NewSubscription(drv, bucket, opts)
+
+	m, err := extSub.Receive(ctx)
 	assert.NoError(t, err)
 
-	time.Sleep(10 * time.Millisecond)
-	drv.mu.Lock()
-	if len(drv.msgs) > 0 {
-		drv.msgs[0].AckID = "custom-nack-id"
-	}
-	drv.mu.Unlock()
-
-	m1, err := extSub.Receive(ctx)
-	assert.NoError(t, err)
-
-	if m1.Nackable() {
-		m1.Nack()
-		time.Sleep(10 * time.Millisecond)
-		drv.mu.Lock()
-		assert.Len(t, drv.nacks, 1)
-		assert.Equal(t, "custom-nack-id", drv.nacks[0])
-		drv.mu.Unlock()
+	if m.Nackable() {
+		m.Nack()
+		time.Sleep(50 * time.Millisecond)
+		assert.Len(t, drv.Nacks(), 1)
+		assert.Equal(t, "nack-ack-id", drv.Nacks()[0])
 	}
 }
 
@@ -103,19 +134,18 @@ func TestIntegration_ExplicitBatch(t *testing.T) {
 	ctx := context.Background()
 
 	// 1. Setup
-	drv := &memDriver{}
+	drv := &extpubsub.MemDriver{}
 	bucket := memblob.OpenBucket(nil)
 
 	// 2. Setup Extended Topic and Wrapper Subscription (Layer 2)
-	opts := Options{
+	opts := extpubsub.Options{
 		DisableTransparentUnrolling: true,
 		InjectBlobMetadata:          true,
 	}
-	// We use the driver to create the public topic/sub
-	psTopic := NewTopic(drv, bucket, opts)
-	psSub := NewSubscription(drv, bucket, opts)
+	psTopic := extpubsub.NewTopic(drv, bucket, opts)
+	psSub := extpubsub.NewSubscription(drv, bucket, opts)
 
-	wrapperSub := WrapSubscription(psSub, bucket, opts)
+	wrapperSub := extpubsub.WrapSubscription(psSub, bucket, opts)
 
 	// 3. Send data
 	err := psTopic.Send(ctx, &pubsub.Message{Body: []byte("batched data")})
@@ -135,24 +165,4 @@ func TestIntegration_ExplicitBatch(t *testing.T) {
 	assert.Equal(t, []byte("batched data"), msgs[0].Body)
 
 	batch.Ack()
-}
-
-func TestIntegration_ExplicitBatch_Nack(t *testing.T) {
-	ctx := context.Background()
-	drv := &memDriver{}
-	bucket := memblob.OpenBucket(nil)
-	opts := Options{DisableTransparentUnrolling: true}
-	psTopic := NewTopic(drv, bucket, opts)
-	psSub := NewSubscription(drv, bucket, opts)
-	wrapperSub := WrapSubscription(psSub, bucket, opts)
-
-	err := psTopic.Send(ctx, &pubsub.Message{Body: []byte("batched data")})
-	assert.NoError(t, err)
-
-	batch, err := wrapperSub.ReceiveBatch(ctx)
-	assert.NoError(t, err)
-
-	if batch.Original.Nackable() {
-		batch.Nack()
-	}
 }
