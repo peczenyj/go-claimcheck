@@ -68,7 +68,6 @@ This project uses [Task](https://taskfile.dev/) to manage the development workfl
 
 - Go 1.25+
 - [golangci-lint](https://golangci-lint.run/)
-- [mockery](https://github.com/vektra/mockery) (for generating mocks)
 - [gotestsum](https://github.com/gotestyourself/gotestsum) (for formatted test output)
 
 ### Common Tasks
@@ -77,7 +76,6 @@ This project uses [Task](https://taskfile.dev/) to manage the development workfl
 - **Run Linter:** `task lint`
 - **Format Code:** `task format`
 - **Tidy Modules:** `task tidy`
-- **Generate Mocks:** `task mock`
 
 ## License
 
