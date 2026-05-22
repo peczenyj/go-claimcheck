@@ -5,9 +5,10 @@ import (
 	"io"
 	"testing"
 
-	"github.com/peczenyj/go-claimcheck/extpubsub"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/peczenyj/go-claimcheck/extpubsub"
 )
 
 func TestLengthPrefixedSerializer(t *testing.T) {
@@ -43,7 +44,7 @@ func TestLengthPrefixedSerializer(t *testing.T) {
 
 	t.Run("DecodeInvalidLength", func(t *testing.T) {
 		// 4 bytes for length, but negative
-		data := []byte{0xff, 0xff, 0xff, 0xff} 
+		data := []byte{0xff, 0xff, 0xff, 0xff}
 		_, err := s.Decode(bytes.NewReader(data))
 		assert.ErrorIs(t, err, io.ErrUnexpectedEOF)
 	})
@@ -54,7 +55,7 @@ func TestLengthPrefixedSerializer(t *testing.T) {
 		_, err := s.Decode(bytes.NewReader(data))
 		assert.ErrorIs(t, err, io.ErrUnexpectedEOF)
 	})
-	
+
 	t.Run("DecodeMalformedJSON", func(t *testing.T) {
 		// Length 5, but body is not JSON
 		data := []byte{0, 0, 0, 5, 'n', 'o', 't', 'j', 's'}
