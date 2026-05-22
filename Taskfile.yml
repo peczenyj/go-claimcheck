@@ -35,6 +35,11 @@ tasks:
     cmds:
       - gotestsum -- -race -covermode=atomic -count=1 -coverprofile=coverage.txt {{.PKG_PATH_LIST}} {{.CLI_ARGS}}
 
+  clean:
+    desc: "Remove coverage artifacts"
+    cmds:
+      - rm -f coverage.* *.out *.coverprofile profile.cov
+
   lint:
     desc: "Run golangci-lint"
     cmds:
