@@ -2,56 +2,50 @@ name: CI
 
 on:
   push:
-    branches: [ devel, main ]
+    branches: [main, devel]
   pull_request:
-    branches: [ devel, main ]
+    branches: [main, devel]
 
 permissions:
   contents: read
 
 jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+
   test:
+    name: Unit tests (Go ${{ matrix.go-version }})
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        go-version: [ '1.25', '1.26' ]
-
+        go-version: ['1.25', 'stable']
     steps:
-    - uses: actions/checkout@v4
-
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: ${{ matrix.go-version }}
-
-    - name: Install Task
-      uses: arduino/setup-task@v2
-      with:
-        version: 3.x
-        repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Install gotestsum
-      run: go install gotest.tools/gotestsum@latest
-
-    - name: Run Tests
-      run: task test
-
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: '1.25'
-
-    - name: Install Task
-      uses: arduino/setup-task@v2
-      with:
-        version: 3.x
-
-    - name: Run Linter
-      uses: golangci/golangci-lint-action@v8
-      with:
-        version: latest
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+      - name: Install gotestsum
+        # gotestsum@latest's go.mod may require a newer toolchain than the
+        # matrix Go; allow this build step (only) to fetch one. The tests
+        # below still run on the matrix Go version.
+        env:
+          GOTOOLCHAIN: auto
+        run: go install gotest.tools/gotestsum@latest
+      - name: Install task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run unit tests
+        run: task test -- -race -covermode=atomic -count=1 -coverprofile=coverage.txt
