@@ -21,6 +21,7 @@ All notable changes to this project will be documented in this file.
 - Implement core claim-check pattern with dual-layer API
 - *(task)* Add test:race and test:coverage tasks
 - *(task)* Add clean task to remove coverage artifacts
+- Implement message size threshold and update documentation
 
 ### Miscellaneous Tasks
 
@@ -33,6 +34,11 @@ All notable changes to this project will be documented in this file.
 - Add codecov
 - Update taskfile
 - Update taskfile
+- Update release workflow
+
+### Refactor
+
+- Rename integration tests to scenario tests
 
 ### Security
 
@@ -41,6 +47,11 @@ All notable changes to this project will be documented in this file.
 ### Styling
 
 - Fix gci formatting in tests
+- Fix gci formatting in serializer_test.go
+
+### Testing
+
+- Increase coverage for serializers
 
 ### Ci
 
