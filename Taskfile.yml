@@ -1,32 +1,85 @@
 version: '3'
 
+vars:
+  # Minimum supported Go version. Keep in sync with the `go` directive in
+  # go.mod. GitHub Actions runs on `stable` only, so `task ci` is the sole
+  # place the floor is enforced: it pins the toolchain to this version, making
+  # a dependency that quietly raises the floor fail locally. Run it before
+  # pushing.
+  GO_MIN: '1.25.0'
+  # PKG_LIST defines all project packages excluding generated mocks.
+  PKG_LIST:
+    sh: go list ./... | grep -v mocks/ | tr '\n' ' '
+  # PKG_PATH_LIST defines the directory paths for the packages in PKG_LIST.
+  PKG_PATH_LIST:
+    sh: go list -f '{{"{{.Dir}}"}}' {{.PKG_LIST}} | tr '\n' ' '
+
 tasks:
   default:
+    desc: "List available tasks"
     cmds:
-      - task: test
-      - task: lint
+      - task --list
 
   test:
-    desc: Run tests using gotestsum
+    desc: "Run unit tests via gotestsum"
     cmds:
-      - gotestsum --format pkgname-and-test-fails -- ./...
+      - gotestsum -- {{.PKG_PATH_LIST}} {{.CLI_ARGS}}
+
+  test:race:
+    desc: "Run unit tests with race detector"
+    cmds:
+      - gotestsum -- -race {{.PKG_PATH_LIST}} {{.CLI_ARGS}}
+
+  test:coverage:
+    desc: "Run unit tests with race detector and coverage report"
+    cmds:
+      - gotestsum -- -race -covermode=atomic -count=1 -coverprofile=coverage.txt {{.PKG_PATH_LIST}} {{.CLI_ARGS}}
+
+  clean:
+    desc: "Remove coverage artifacts"
+    cmds:
+      - rm -f coverage.* *.out *.coverprofile profile.cov
 
   lint:
-    desc: Run golangci-lint
+    desc: "Run golangci-lint"
     cmds:
-      - golangci-lint run ./...
+      - golangci-lint run {{.PKG_PATH_LIST}}
 
   format:
-    desc: Format code using golangci-lint
+    desc: "Format Go code with golangci-lint's built-in formatters"
     cmds:
-      - golangci-lint run --fix ./...
-
-  changelog:
-    desc: Generate changelog using git-cliff
-    cmds:
-      - git-cliff -o CHANGELOG.md
+      - golangci-lint fmt {{.PKG_PATH_LIST}}
 
   tidy:
-    desc: Tidy go modules
+    desc: "Run go mod tidy"
     cmds:
       - go mod tidy
+
+  tidy:check:
+    desc: "Fail if go.mod/go.sum are not tidy"
+    cmds:
+      - go mod tidy
+      - git diff --exit-code go.mod go.sum
+
+  ci:
+    desc: "Full pre-push gate: mirrors GitHub Actions on the minimum supported Go"
+    env:
+      # Pin the build/test toolchain to the floor. A dependency that requires a
+      # newer Go than GO_MIN fails here, the way the matrix's lowest job would.
+      GOTOOLCHAIN: 'go{{.GO_MIN}}'
+    cmds:
+      - go mod tidy
+      - git diff --exit-code go.mod go.sum
+      - golangci-lint run {{.PKG_PATH_LIST}}
+      - go build {{.PKG_PATH_LIST}}
+      - gotestsum -- {{.PKG_PATH_LIST}}
+
+  changelog:
+    desc: "Regenerate CHANGELOG.md from git history"
+    cmds:
+      - git cliff -o CHANGELOG.md
+
+  changelog:unreleased:
+    desc: "Preview the next release's changelog section"
+    cmds:
+      - git cliff --unreleased

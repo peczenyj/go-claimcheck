@@ -5,10 +5,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/peczenyj/go-claimcheck/extpubsub"
 	"github.com/stretchr/testify/assert"
 	"gocloud.dev/blob/memblob"
 	"gocloud.dev/pubsub/driver"
+
+	"github.com/peczenyj/go-claimcheck/extpubsub"
 )
 
 func TestWrappers(t *testing.T) {
