@@ -38,3 +38,27 @@ func TestJSONLines_ChunkedRoundTrip(t *testing.T) {
 	require.Equal(t, "a", string(got[0].Body))
 	require.Equal(t, "c", string(got[2].Body))
 }
+
+func TestLengthPrefixed_ChunkedRoundTrip(t *testing.T) {
+	s := claimcheck.NewLengthPrefixedSerializer()
+	require.Equal(t, "application/octet-stream", s.ContentType())
+
+	msgs := []*claimcheck.Message{{Body: []byte("x")}, {Body: []byte("yy")}}
+	var buf bytes.Buffer
+	require.NoError(t, s.Encode(&buf, msgs))
+
+	got := drain(t, s.NewDecoder(&buf, 0), 1)
+	require.Len(t, got, 2)
+	require.Equal(t, "yy", string(got[1].Body))
+}
+
+func TestLengthPrefixed_MaxMessageSize(t *testing.T) {
+	s := claimcheck.NewLengthPrefixedSerializer()
+	var buf bytes.Buffer
+	require.NoError(t, s.Encode(&buf, []*claimcheck.Message{{Body: []byte("a long-ish body")}}))
+
+	dec := s.NewDecoder(&buf, 4) // far below the encoded record size
+	out := make([]*claimcheck.Message, 1)
+	_, err := dec.Decode(out)
+	require.ErrorIs(t, err, claimcheck.ErrMessageTooLarge)
+}
