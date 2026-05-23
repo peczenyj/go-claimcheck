@@ -46,7 +46,7 @@ bucket := memblob.OpenBucket(nil)
 
 // Wrap with Claim-Check logic
 opts := extpubsub.Options{
-    MinSize:     1024 * 1024,            // Offload only if > 1MB
+    MinSize:     1024 * 1024,            // Offload only if >= 1MB
     Transformer: extpubsub.NewGzipTransformer(), // Compress blobs
 }
 topic := extpubsub.NewTopic(baseTopic, bucket, opts)
@@ -92,6 +92,34 @@ for _, m := range msgs {
 
 batch.Ack() // Acks the underlying control message
 ```
+
+### 4. Explicit Send-Side Offloading (WrapTopic)
+
+For fine-grained, per-message control on the publish side without the driver-level batching:
+
+```go
+import (
+    "github.com/peczenyj/go-claimcheck/extpubsub"
+    "gocloud.dev/pubsub"
+    "gocloud.dev/pubsub/mempubsub"
+    "gocloud.dev/blob/memblob"
+)
+
+// Initialize base drivers
+baseTopic := mempubsub.NewTopic()
+bucket := memblob.OpenBucket(nil)
+
+// Wrap with per-message offload logic
+opts := extpubsub.Options{
+    MinSize: 1024 * 1024, // Offload only if >= 1MB; 0 = always offload
+}
+topic := extpubsub.WrapTopic(baseTopic, bucket, opts)
+
+// Send — body >= MinSize is written to the bucket; smaller bodies pass through unchanged
+err := topic.Send(ctx, &pubsub.Message{Body: []byte("large payload...")})
+```
+
+The receiving side uses `WrapSubscription` (or `extpubsub.NewSubscription`) with the same bucket and options to transparently unroll offloaded messages.
 
 ## Development
 
