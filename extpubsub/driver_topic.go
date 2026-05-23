@@ -10,6 +10,63 @@ import (
 	"gocloud.dev/pubsub/driver"
 )
 
+// offload writes msgs as a single blob to bucket and returns the control-message
+// metadata describing it (version, url, msg_count, content_type,
+// content_encoding, file_size, checksum), keyed with opts.MetadataPrefix.
+// The blob name is a fresh UUID.
+func offload(ctx context.Context, bucket *blob.Bucket, opts Options, msgs []*Message) (map[string]string, error) {
+	blobName := uuid.New().String()
+
+	metadata := make(map[string]string)
+	if opts.InjectBlobMetadata {
+		metadata["msg_count"] = strconv.Itoa(len(msgs))
+	}
+
+	w, err := bucket.NewWriter(ctx, blobName, &blob.WriterOptions{
+		ContentType: opts.Serializer.ContentType(),
+		Metadata:    metadata,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("extpubsub: failed to create blob writer: %w", err)
+	}
+
+	tw, err := opts.Transformer.WrapWriter(w)
+	if err != nil {
+		_ = w.Close()
+		return nil, fmt.Errorf("extpubsub: failed to wrap writer: %w", err)
+	}
+
+	if err := opts.Serializer.Encode(tw, msgs); err != nil {
+		_ = tw.Close()
+		_ = w.Close()
+		return nil, fmt.Errorf("extpubsub: failed to encode messages: %w", err)
+	}
+
+	if err := tw.Close(); err != nil {
+		_ = w.Close()
+		return nil, fmt.Errorf("extpubsub: failed to close transformer: %w", err)
+	}
+	if err := w.Close(); err != nil {
+		return nil, fmt.Errorf("extpubsub: failed to close blob writer: %w", err)
+	}
+
+	attr, err := bucket.Attributes(ctx, blobName)
+	if err != nil {
+		return nil, fmt.Errorf("extpubsub: failed to get blob attributes: %w", err)
+	}
+
+	prefix := opts.MetadataPrefix
+	return map[string]string{
+		prefix + "v":                "1",
+		prefix + "url":              blobName,
+		prefix + "msg_count":        strconv.Itoa(len(msgs)),
+		prefix + "content_type":     opts.Serializer.ContentType(),
+		prefix + "content_encoding": opts.Transformer.ContentEncoding(),
+		prefix + "file_size":        strconv.FormatInt(attr.Size, 10),
+		prefix + "checksum":         fmt.Sprintf("%x", attr.MD5),
+	}, nil
+}
+
 type topic struct {
 	driver.Topic
 	bucket *blob.Bucket
@@ -37,74 +94,20 @@ func (t *topic) SendBatch(ctx context.Context, msgs []*driver.Message) error {
 		}
 	}
 
-	// 1. Generate unique blob name
-	blobName := uuid.New().String()
-
-	// 2. Prepare blob metadata (for the blob service itself)
-	metadata := make(map[string]string)
-	if t.opts.InjectBlobMetadata {
-		metadata["msg_count"] = strconv.Itoa(len(msgs))
-	}
-
-	// 3. Write to blob
-	w, err := t.bucket.NewWriter(ctx, blobName, &blob.WriterOptions{
-		ContentType: t.opts.Serializer.ContentType(),
-		Metadata:    metadata,
-	})
-	if err != nil {
-		return fmt.Errorf("extpubsub: failed to create blob writer: %w", err)
-	}
-
-	tw, err := t.opts.Transformer.WrapWriter(w)
-	if err != nil {
-		_ = w.Close()
-		return fmt.Errorf("extpubsub: failed to wrap writer: %w", err)
-	}
-
-	// Convert driver.Message to Message for the serializer
+	// 1. Convert driver.Message to Message for the serializer
 	pubMsgs := make([]*Message, len(msgs))
 	for i, m := range msgs {
-		pubMsgs[i] = &Message{
-			Body:     m.Body,
-			Metadata: m.Metadata,
-		}
+		pubMsgs[i] = &Message{Body: m.Body, Metadata: m.Metadata}
 	}
 
-	if err := t.opts.Serializer.Encode(tw, pubMsgs); err != nil {
-		_ = tw.Close()
-		_ = w.Close()
-		return fmt.Errorf("extpubsub: failed to encode messages: %w", err)
-	}
-
-	if err := tw.Close(); err != nil {
-		_ = w.Close()
-		return fmt.Errorf("extpubsub: failed to close transformer: %w", err)
-	}
-	if err := w.Close(); err != nil {
-		return fmt.Errorf("extpubsub: failed to close blob writer: %w", err)
-	}
-
-	// 4. Get blob attributes (for size/checksum)
-	attr, err := t.bucket.Attributes(ctx, blobName)
+	// 2. Offload to blob and build the control metadata
+	metadata, err := offload(ctx, t.bucket, t.opts, pubMsgs)
 	if err != nil {
-		return fmt.Errorf("extpubsub: failed to get blob attributes: %w", err)
+		return err
 	}
 
-	// 5. Send Control Message
-	prefix := t.opts.MetadataPrefix
-	controlMsg := &driver.Message{
-		Metadata: map[string]string{
-			prefix + "v":                "1",
-			prefix + "url":              blobName, // We store the key/name. Receiver must have same bucket context.
-			prefix + "msg_count":        strconv.Itoa(len(msgs)),
-			prefix + "content_type":     t.opts.Serializer.ContentType(),
-			prefix + "content_encoding": t.opts.Transformer.ContentEncoding(),
-			prefix + "file_size":        strconv.FormatInt(attr.Size, 10),
-			prefix + "checksum":         fmt.Sprintf("%x", attr.MD5),
-		},
-	}
-
-	return t.Topic.SendBatch(ctx, []*driver.Message{controlMsg})
+	// 3. Send the control message
+	return t.Topic.SendBatch(ctx, []*driver.Message{{Metadata: metadata}})
 }
 
 func (t *topic) Close() error {
