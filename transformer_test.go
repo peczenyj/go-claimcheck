@@ -5,8 +5,9 @@ import (
 	"io"
 	"testing"
 
-	claimcheck "github.com/peczenyj/go-claimcheck"
 	"github.com/stretchr/testify/require"
+
+	claimcheck "github.com/peczenyj/go-claimcheck"
 )
 
 func TestGzipTransformer_RoundTrip(t *testing.T) {

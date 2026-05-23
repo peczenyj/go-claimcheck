@@ -2,11 +2,13 @@ package claimcheck_test
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"testing"
 
-	claimcheck "github.com/peczenyj/go-claimcheck"
 	"github.com/stretchr/testify/require"
+
+	claimcheck "github.com/peczenyj/go-claimcheck"
 )
 
 func drain(t *testing.T, dec claimcheck.Decoder, chunk int) []*claimcheck.Message {
@@ -16,7 +18,7 @@ func drain(t *testing.T, dec claimcheck.Decoder, chunk int) []*claimcheck.Messag
 	for {
 		n, err := dec.Decode(buf)
 		out = append(out, buf[:n]...)
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			return out
 		}
 		require.NoError(t, err)

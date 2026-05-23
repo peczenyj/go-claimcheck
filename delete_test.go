@@ -4,9 +4,10 @@ import (
 	"context"
 	"testing"
 
-	claimcheck "github.com/peczenyj/go-claimcheck"
 	"github.com/stretchr/testify/require"
 	"gocloud.dev/blob/memblob"
+
+	claimcheck "github.com/peczenyj/go-claimcheck"
 )
 
 func TestDelete(t *testing.T) {

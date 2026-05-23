@@ -4,10 +4,11 @@ import (
 	"context"
 	"testing"
 
-	claimcheck "github.com/peczenyj/go-claimcheck"
 	"github.com/stretchr/testify/require"
 	"gocloud.dev/blob"
 	"gocloud.dev/blob/memblob"
+
+	claimcheck "github.com/peczenyj/go-claimcheck"
 )
 
 func TestRead_RoundTrip(t *testing.T) {

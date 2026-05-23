@@ -3,8 +3,9 @@ package claimcheck_test
 import (
 	"testing"
 
-	claimcheck "github.com/peczenyj/go-claimcheck"
 	"github.com/stretchr/testify/require"
+
+	claimcheck "github.com/peczenyj/go-claimcheck"
 )
 
 func TestControlMessage_RoundTrip(t *testing.T) {
