@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [unreleased]
+## [0.0.1] - 2026-05-22
 
 ### Bug Fixes
 
@@ -35,6 +35,7 @@ All notable changes to this project will be documented in this file.
 - Update taskfile
 - Update taskfile
 - Update release workflow
+- Bump version
 
 ### Refactor
 
