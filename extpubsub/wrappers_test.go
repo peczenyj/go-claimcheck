@@ -22,7 +22,7 @@ func TestWrappers(t *testing.T) {
 	sub := extpubsub.NewSubscription(drv, bucket, opts)
 
 	t.Run("WrapTopic", func(t *testing.T) {
-		wt := extpubsub.WrapTopic(topic)
+		wt := extpubsub.WrapTopic(topic, bucket, opts)
 		assert.NotNil(t, wt)
 		assert.Equal(t, topic, wt.Topic)
 	})

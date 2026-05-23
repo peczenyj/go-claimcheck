@@ -46,7 +46,7 @@ bucket := memblob.OpenBucket(nil)
 
 // Wrap with Claim-Check logic
 opts := extpubsub.Options{
-    MinSize:     1024 * 1024,            // Offload only if > 1MB
+    MinSize:     1024 * 1024,            // Offload only if >= 1MB
     Transformer: extpubsub.NewGzipTransformer(), // Compress blobs
 }
 topic := extpubsub.NewTopic(baseTopic, bucket, opts)
@@ -93,6 +93,34 @@ for _, m := range msgs {
 batch.Ack() // Acks the underlying control message
 ```
 
+### 4. Explicit Send-Side Offloading (WrapTopic)
+
+For fine-grained, per-message control on the publish side without the driver-level batching:
+
+```go
+import (
+    "github.com/peczenyj/go-claimcheck/extpubsub"
+    "gocloud.dev/pubsub"
+    "gocloud.dev/pubsub/mempubsub"
+    "gocloud.dev/blob/memblob"
+)
+
+// Initialize base drivers
+baseTopic := mempubsub.NewTopic()
+bucket := memblob.OpenBucket(nil)
+
+// Wrap with per-message offload logic
+opts := extpubsub.Options{
+    MinSize: 1024 * 1024, // Offload only if >= 1MB; 0 = always offload
+}
+topic := extpubsub.WrapTopic(baseTopic, bucket, opts)
+
+// Send — body >= MinSize is written to the bucket; smaller bodies pass through unchanged
+err := topic.Send(ctx, &pubsub.Message{Body: []byte("large payload...")})
+```
+
+The receiving side uses `WrapSubscription` (or `extpubsub.NewSubscription`) with the same bucket and options to transparently unroll offloaded messages.
+
 ## Development
 
 This project uses [Task](https://taskfile.dev/) to manage the development workflow.
@@ -109,6 +137,51 @@ This project uses [Task](https://taskfile.dev/) to manage the development workfl
 - **Run Linter:** `task lint`
 - **Format Code:** `task format`
 - **Tidy Modules:** `task tidy`
+
+## Integration Testing
+
+Integration tests live behind the `integration` build tag and exercise the full
+claim-check round-trip against real infrastructure.
+
+```bash
+task test:integration
+```
+
+There are three tests:
+
+- **`TestIntegrationKafka`** — publishes and consumes through a Redpanda (Kafka)
+  container, with MinIO as the blob store. Requires Docker.
+- **`TestIntegrationRabbitMQ`** — publishes and consumes through a RabbitMQ
+  container, with MinIO as the blob store. Requires Docker.
+- **`TestIntegrationExternal`** — runs against real backends you provide via
+  environment variables. **Skipped unless `CLAIMCHECK_IT_PUBSUB_URL` is set.**
+
+The external test reads:
+
+| Variable | Purpose | Default |
+| :--- | :--- | :--- |
+| `CLAIMCHECK_IT_PUBSUB_URL` | pubsub URL used for **both** publish and consume (`rabbit://my-queue`, `kafka://my-topic`, `mem://t`, …) | _(required; test skipped if empty)_ |
+| `CLAIMCHECK_IT_BLOB_URL` | blob bucket URL (`s3://bucket?region=...&endpoint=...&use_path_style=true`, `file:///tmp/cc`, …) | `mem://` |
+| `CLAIMCHECK_IT_MESSAGE_COUNT` | number of messages to push | `1024` |
+
+`CLAIMCHECK_IT_PUBSUB_URL` is passed to both `pubsub.OpenTopic` and
+`pubsub.OpenSubscription`, so it must be valid as both for the chosen driver
+(e.g. a RabbitMQ exchange/queue with a binding). The Go CDK URL openers read
+their own variables, which you set for the real backends:
+
+- Kafka: `KAFKA_BROKERS` (comma-separated)
+- RabbitMQ: `RABBIT_SERVER_URL` (`amqp://...`)
+- S3: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, optionally `AWS_ENDPOINT_URL_S3`
+
+Example against a real RabbitMQ + real S3 bucket:
+
+```bash
+export CLAIMCHECK_IT_PUBSUB_URL='rabbit://claimcheck'
+export RABBIT_SERVER_URL='amqp://guest:guest@localhost:5672/'
+export CLAIMCHECK_IT_BLOB_URL='s3://my-bucket?region=eu-west-1'
+export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=...
+task test:integration
+```
 
 ## License
 
