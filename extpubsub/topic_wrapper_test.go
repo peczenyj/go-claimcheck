@@ -79,4 +79,5 @@ func TestWrapTopic_OffloadError(t *testing.T) {
 	extTopic := extpubsub.WrapTopic(rawTopic, bucket, opts)
 
 	require.Error(t, extTopic.Send(ctx, &pubsub.Message{Body: []byte("data")}))
+	require.Empty(t, drv.Messages())
 }
