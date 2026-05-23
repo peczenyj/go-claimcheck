@@ -2,6 +2,38 @@
 
 All notable changes to this project will be documented in this file.
 
+## [unreleased]
+
+### Documentation
+
+- Clarify WrapTopic always-offload default and embedding caveat
+- Document integration tests and CLAIMCHECK_IT_* env vars
+- Add WrapTopic quick-start example and fix MinSize wording
+
+### Features
+
+- Make WrapTopic offload large messages per-message
+
+### Miscellaneous Tasks
+
+- Update changelog
+
+### Refactor
+
+- Extract shared offload helper from topic.SendBatch
+
+### Testing
+
+- Cover functional WrapTopic offload, passthrough, and error path
+- Assert failed WrapTopic offload publishes no control message
+- Add claim-check integration test over real broker + blob
+- Split integration test into Kafka, RabbitMQ, and external cases
+
+### Build
+
+- Add integration-test dependencies
+- Add test:integration task
+
 ## [0.0.1] - 2026-05-22
 
 ### Bug Fixes
