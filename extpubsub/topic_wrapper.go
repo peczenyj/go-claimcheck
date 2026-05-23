@@ -13,6 +13,9 @@ import (
 // Unlike the driver-level NewTopic, which offloads a whole driver batch into a
 // single blob, Topic operates at the *pubsub.Topic level and therefore offloads
 // one message at a time: each Send writes one blob and emits one control message.
+//
+// Offloading only occurs when Send is called on *Topic. Calling Send directly
+// on the embedded *pubsub.Topic bypasses offloading entirely.
 type Topic struct {
 	*pubsub.Topic
 
@@ -23,6 +26,8 @@ type Topic struct {
 // WrapTopic wraps an existing *pubsub.Topic so that messages whose body is at
 // least opts.MinSize bytes are offloaded to b and replaced with a control
 // message. Messages smaller than opts.MinSize are sent through unchanged.
+// When opts.MinSize is 0 (the default), every message is offloaded regardless
+// of size; set MinSize to a positive value to avoid offloading small messages.
 // It assumes the receiving side uses the same bucket and options.
 func WrapTopic(t *pubsub.Topic, b *blob.Bucket, opts Options) *Topic {
 	opts.SetDefaults()
