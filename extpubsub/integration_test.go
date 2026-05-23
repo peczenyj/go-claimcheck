@@ -2,24 +2,27 @@
 
 // Integration tests for the claim-check round-trip against real infrastructure.
 //
-// Each backend is resolved through a Go CDK URL opener and can be substituted
-// with a real backend via environment variables; when a variable is unset, a
-// testcontainer is started instead.
+// There are three tests:
 //
-//	CLAIMCHECK_IT_INPUT          topic URL to publish to
-//	                             (e.g. kafka://my-topic, rabbit://my-exchange)
-//	CLAIMCHECK_IT_OUTPUT         subscription URL to consume from
-//	                             (e.g. kafka://my-group?topic=my-topic&offset=oldest,
-//	                              rabbit://my-queue)
-//	CLAIMCHECK_IT_BLOB_URL       blob bucket URL
-//	                             (e.g. s3://bucket?region=..&endpoint=..&use_path_style=true,
-//	                              mem://, file:///path)
-//	CLAIMCHECK_IT_BROKER         which broker the fallback starts: "kafka" (default) or "rabbitmq"
-//	CLAIMCHECK_IT_MESSAGE_COUNT  number of messages to push (default 1000)
+//   - TestIntegrationKafka     — Kafka (Redpanda) for both publish and consume,
+//     MinIO for blob storage. Always runs (requires Docker).
+//   - TestIntegrationRabbitMQ  — RabbitMQ for both publish and consume, MinIO
+//     for blob storage. Always runs (requires Docker).
+//   - TestIntegrationExternal  — uses real backends provided via environment
+//     variables. Skipped unless CLAIMCHECK_IT_PUBSUB_URL is set.
 //
-// INPUT and OUTPUT describe the two ends of ONE broker (one round-trip per run).
-// The gocloud openers also read KAFKA_BROKERS / RABBIT_SERVER_URL / AWS_* which
-// the container helpers set automatically in fallback mode.
+// The external test reads:
+//
+//	CLAIMCHECK_IT_PUBSUB_URL     pubsub URL used for BOTH publish and consume
+//	                             (e.g. rabbit://my-queue, kafka://my-topic, mem://t).
+//	                             Required; the test is skipped when empty.
+//	CLAIMCHECK_IT_BLOB_URL       blob bucket URL (e.g. s3://bucket?..., file:///p).
+//	                             Defaults to mem:// when empty.
+//	CLAIMCHECK_IT_MESSAGE_COUNT  number of messages to push (default 1024).
+//	                             Only affects TestIntegrationExternal.
+//
+// CLAIMCHECK_IT_PUBSUB_URL is passed to both pubsub.OpenTopic and
+// pubsub.OpenSubscription, so it must be valid as both for the chosen driver.
 package extpubsub_test
 
 import (
@@ -31,7 +34,6 @@ import (
 	"net/url"
 	"os"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -54,34 +56,48 @@ import (
 	_ "gocloud.dev/blob/memblob"
 	_ "gocloud.dev/blob/s3blob"
 	_ "gocloud.dev/pubsub/kafkapubsub"
+	_ "gocloud.dev/pubsub/mempubsub"
 	_ "gocloud.dev/pubsub/rabbitpubsub"
 
 	"github.com/peczenyj/go-claimcheck/extpubsub"
 )
 
 const (
-	defaultMessageCount = 1000
+	defaultMessageCount = 1024
+	progressInterval    = 128
 	resourceName        = "claimcheck-it"
 	receiveTimeout      = 60 * time.Second
 )
 
-func TestIntegration(t *testing.T) {
-	ctx := context.Background()
+// TestIntegrationKafka round-trips messages through a Redpanda (Kafka) container
+// with MinIO as the blob store.
+func TestIntegrationKafka(t *testing.T) {
+	blobURL := startMinIO(t)
+	topicURL, subURL := startRedpanda(t)
+	runRoundTrip(t, topicURL, subURL, blobURL, defaultMessageCount)
+}
+
+// TestIntegrationRabbitMQ round-trips messages through a RabbitMQ container with
+// MinIO as the blob store.
+func TestIntegrationRabbitMQ(t *testing.T) {
+	blobURL := startMinIO(t)
+	topicURL, subURL := startRabbitMQ(t)
+	runRoundTrip(t, topicURL, subURL, blobURL, defaultMessageCount)
+}
+
+// TestIntegrationExternal round-trips messages through the real backends named
+// by CLAIMCHECK_IT_PUBSUB_URL (publish + consume) and CLAIMCHECK_IT_BLOB_URL
+// (blob store, defaulting to mem://). It is skipped when CLAIMCHECK_IT_PUBSUB_URL
+// is unset.
+func TestIntegrationExternal(t *testing.T) {
+	pubsubURL := os.Getenv("CLAIMCHECK_IT_PUBSUB_URL")
+	if pubsubURL == "" {
+		t.Skip("CLAIMCHECK_IT_PUBSUB_URL not set; skipping external integration test")
+	}
 
 	blobURL := os.Getenv("CLAIMCHECK_IT_BLOB_URL")
 	if blobURL == "" {
-		blobURL = startMinIO(t)
-	}
-
-	inURL := os.Getenv("CLAIMCHECK_IT_INPUT")
-	outURL := os.Getenv("CLAIMCHECK_IT_OUTPUT")
-	if inURL == "" || outURL == "" {
-		switch strings.ToLower(os.Getenv("CLAIMCHECK_IT_BROKER")) {
-		case "rabbitmq", "rabbit":
-			inURL, outURL = startRabbitMQ(t)
-		default:
-			inURL, outURL = startRedpanda(t)
-		}
+		blobURL = "mem://"
 	}
 
 	count := defaultMessageCount
@@ -91,15 +107,26 @@ func TestIntegration(t *testing.T) {
 		count = n
 	}
 
+	runRoundTrip(t, pubsubURL, pubsubURL, blobURL, count)
+}
+
+// runRoundTrip opens the topic, subscription, and bucket from their URLs, wraps
+// the topic/subscription with the claim-check offload (forcing every message to
+// be offloaded via MinSize: 1), publishes count messages, and verifies they all
+// come back.
+func runRoundTrip(t *testing.T, topicURL, subURL, blobURL string, count int) {
+	t.Helper()
+	ctx := context.Background()
+
 	bucket, err := blob.OpenBucket(ctx, blobURL)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = bucket.Close() })
 
-	topic, err := pubsub.OpenTopic(ctx, inURL)
+	topic, err := pubsub.OpenTopic(ctx, topicURL)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = topic.Shutdown(ctx) })
 
-	sub, err := pubsub.OpenSubscription(ctx, outURL)
+	sub, err := pubsub.OpenSubscription(ctx, subURL)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = sub.Shutdown(ctx) })
 
@@ -107,7 +134,16 @@ func TestIntegration(t *testing.T) {
 	extTopic := extpubsub.WrapTopic(topic, bucket, opts)
 	wrapSub := extpubsub.WrapSubscription(sub, bucket, opts)
 
-	// Publish.
+	publishMessages(t, extTopic, count)
+	consumeMessages(t, wrapSub, count)
+}
+
+// publishMessages sends count JSON messages through the wrapped topic, logging
+// progress every progressInterval messages.
+func publishMessages(t *testing.T, extTopic *extpubsub.Topic, count int) {
+	t.Helper()
+	ctx := context.Background()
+
 	for i := 0; i < count; i++ {
 		body, err := json.Marshal(map[string]any{
 			"foo":       "bar",
@@ -116,18 +152,27 @@ func TestIntegration(t *testing.T) {
 		})
 		require.NoError(t, err)
 		require.NoError(t, extTopic.Send(ctx, &pubsub.Message{Body: body}))
-	}
 
-	// Consume and verify.
-	recvCtx, cancel := context.WithTimeout(ctx, receiveTimeout)
+		if n := i + 1; n%progressInterval == 0 || n == count {
+			t.Logf("writing %d of %d messages", n, count)
+		}
+	}
+}
+
+// consumeMessages receives and unrolls messages from the wrapped subscription
+// until count have been collected, logging progress every progressInterval
+// messages and verifying each decodes to the expected shape.
+func consumeMessages(t *testing.T, wrapSub *extpubsub.Subscription, count int) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), receiveTimeout)
 	defer cancel()
 
 	received := 0
 	for received < count {
-		batch, err := wrapSub.ReceiveBatch(recvCtx)
+		batch, err := wrapSub.ReceiveBatch(ctx)
 		require.NoError(t, err)
 
-		msgs, err := batch.Unroll(recvCtx)
+		msgs, err := batch.Unroll(ctx)
 		require.NoError(t, err)
 
 		for _, m := range msgs {
@@ -139,6 +184,10 @@ func TestIntegration(t *testing.T) {
 			require.NoError(t, json.Unmarshal(m.Body, &payload))
 			require.Equal(t, "bar", payload.Foo)
 			received++
+
+			if received%progressInterval == 0 || received == count {
+				t.Logf("reading %d of %d messages", received, count)
+			}
 		}
 		batch.Ack()
 	}
@@ -147,8 +196,8 @@ func TestIntegration(t *testing.T) {
 }
 
 // startRedpanda boots a Redpanda (Kafka-compatible) container, sets KAFKA_BROKERS,
-// and returns the input topic URL and output subscription URL.
-func startRedpanda(t *testing.T) (inURL, outURL string) {
+// and returns the topic URL and subscription URL.
+func startRedpanda(t *testing.T) (topicURL, subURL string) {
 	t.Helper()
 	ctx := context.Background()
 
@@ -163,8 +212,8 @@ func startRedpanda(t *testing.T) (inURL, outURL string) {
 	require.NoError(t, err)
 	t.Setenv("KAFKA_BROKERS", broker)
 
-	// rabbitpubsub/kafkapubsub never declare topology; Redpanda does not
-	// reliably auto-create the topic on first produce, so create it up front.
+	// kafkapubsub never declares topology and Redpanda does not reliably
+	// auto-create the topic on first produce, so create it up front.
 	createKafkaTopic(t, broker, resourceName)
 
 	return "kafka://" + resourceName,
@@ -192,8 +241,8 @@ func createKafkaTopic(t *testing.T, broker, topic string) {
 
 // startRabbitMQ boots a RabbitMQ container, sets RABBIT_SERVER_URL, declares a
 // fanout exchange + queue + binding (rabbitpubsub does not declare topology),
-// and returns the input exchange URL and output queue URL.
-func startRabbitMQ(t *testing.T) (inURL, outURL string) {
+// and returns the topic (exchange) URL and subscription (queue) URL.
+func startRabbitMQ(t *testing.T) (topicURL, subURL string) {
 	t.Helper()
 	ctx := context.Background()
 

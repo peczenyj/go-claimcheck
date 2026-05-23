@@ -17,22 +17,22 @@ tasks:
   test:
     desc: "Run unit tests via gotestsum"
     cmds:
-      - gotestsum -- {{.PKG_PATH_LIST}} {{.CLI_ARGS}}
+      - gotestsum -f standard-verbose -- {{.PKG_PATH_LIST}} {{.CLI_ARGS}}
 
   test:race:
     desc: "Run unit tests with race detector"
     cmds:
-      - gotestsum -- -race {{.PKG_PATH_LIST}} {{.CLI_ARGS}}
+      - gotestsum -f standard-verbose -- -race {{.PKG_PATH_LIST}} {{.CLI_ARGS}}
 
   test:coverage:
     desc: "Run unit tests with race detector and coverage report"
     cmds:
-      - gotestsum -- -race -covermode=atomic -count=1 -coverprofile=coverage.txt {{.PKG_PATH_LIST}} {{.CLI_ARGS}}
+      - gotestsum -f standard-verbose -- -race -covermode=atomic -count=1 -coverprofile=coverage.txt {{.PKG_PATH_LIST}} {{.CLI_ARGS}}
 
   test:integration:
     desc: "Run unit + integration tests (requires Docker)"
     cmds:
-      - gotestsum -- -tags=integration -count=1 -timeout=600s {{.PKG_PATH_LIST}} {{.CLI_ARGS}}
+      - gotestsum -f standard-verbose -- -tags=integration -count=1 -timeout=600s {{.PKG_PATH_LIST}} {{.CLI_ARGS}}
 
   clean:
     desc: "Remove coverage artifacts"
