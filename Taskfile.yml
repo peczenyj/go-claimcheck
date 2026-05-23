@@ -29,6 +29,11 @@ tasks:
     cmds:
       - gotestsum -- -race -covermode=atomic -count=1 -coverprofile=coverage.txt {{.PKG_PATH_LIST}} {{.CLI_ARGS}}
 
+  test:integration:
+    desc: "Run unit + integration tests (requires Docker)"
+    cmds:
+      - gotestsum -- -tags=integration -count=1 -timeout=600s {{.PKG_PATH_LIST}} {{.CLI_ARGS}}
+
   clean:
     desc: "Remove coverage artifacts"
     cmds:
