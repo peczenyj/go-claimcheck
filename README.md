@@ -110,6 +110,47 @@ This project uses [Task](https://taskfile.dev/) to manage the development workfl
 - **Format Code:** `task format`
 - **Tidy Modules:** `task tidy`
 
+## Integration Testing
+
+Integration tests live behind the `integration` build tag and exercise the full
+claim-check round-trip against real infrastructure. They require Docker.
+
+```bash
+task test:integration
+```
+
+By default this starts disposable containers (Redpanda for Kafka, MinIO for S3).
+Each backend can be independently swapped for a real one via environment
+variables — when a variable is set, its container is not started.
+
+| Variable | Purpose | Example |
+| :--- | :--- | :--- |
+| `CLAIMCHECK_IT_INPUT` | topic URL to publish to | `kafka://my-topic` / `rabbit://my-exchange` |
+| `CLAIMCHECK_IT_OUTPUT` | subscription URL to consume from | `kafka://my-group?topic=my-topic&offset=oldest` / `rabbit://my-queue` |
+| `CLAIMCHECK_IT_BLOB_URL` | blob bucket URL | `s3://bucket?region=us-east-1&endpoint=...&use_path_style=true` / `mem://` / `file:///tmp/cc` |
+| `CLAIMCHECK_IT_BROKER` | broker started in fallback: `kafka` (default) or `rabbitmq` | `rabbitmq` |
+| `CLAIMCHECK_IT_MESSAGE_COUNT` | number of messages to push | `1000` (default) |
+
+`CLAIMCHECK_IT_INPUT` and `CLAIMCHECK_IT_OUTPUT` describe the two ends of the
+**same** broker (one round-trip per run). The Go CDK URL openers also read their
+own variables, which you must set for real backends (and which the containers
+set automatically in fallback mode):
+
+- Kafka: `KAFKA_BROKERS` (comma-separated)
+- RabbitMQ: `RABBIT_SERVER_URL` (`amqp://...`)
+- S3: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, optionally `AWS_ENDPOINT_URL_S3`
+
+Example against a real Kafka + real S3 bucket:
+
+```bash
+export CLAIMCHECK_IT_INPUT='kafka://orders'
+export CLAIMCHECK_IT_OUTPUT='kafka://claimcheck?topic=orders&offset=oldest'
+export KAFKA_BROKERS='broker1:9092,broker2:9092'
+export CLAIMCHECK_IT_BLOB_URL='s3://my-bucket?region=eu-west-1'
+export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=...
+task test:integration
+```
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
