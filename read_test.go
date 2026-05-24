@@ -63,8 +63,8 @@ func TestRead_VerifyChecksum_Mismatch(t *testing.T) {
 	cm, err := claimcheck.Offload(ctx, bucket, opts, []*claimcheck.Message{{Body: []byte("ok")}})
 	require.NoError(t, err)
 
-	// Corrupt the stored blob in place.
-	require.NoError(t, bucket.WriteAll(ctx, cm.Key, []byte("tampered"), &blob.WriterOptions{ContentType: cm.ContentType}))
+	// Corrupt the stored blob in place but keep it valid JSON so it reaches EOF.
+	require.NoError(t, bucket.WriteAll(ctx, cm.Key, []byte("{\"Body\":\"dHdv\"}\n"), &blob.WriterOptions{ContentType: cm.ContentType}))
 
 	_, err = claimcheck.Read(ctx, bucket, cm, opts)
 	require.ErrorIs(t, err, claimcheck.ErrChecksumMismatch)
