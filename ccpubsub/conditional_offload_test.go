@@ -67,12 +67,23 @@ func TestSend_DefaultMinSizeZeroOffloadsSmall(t *testing.T) {
 	opts := claimcheck.Options{MetadataPrefix: "cc_"} // MinSize 0
 
 	topic := mempubsub.NewTopic()
-	t.Cleanup(func() { _ = topic.Shutdown(ctx) })
+	gsub := mempubsub.NewSubscription(topic, time.Second)
+	t.Cleanup(func() { _ = topic.Shutdown(ctx); _ = gsub.Shutdown(ctx) })
 
 	wt := ccpubsub.WrapTopic(topic, bucket, ccpubsub.TopicOptions{Options: opts})
 	require.NoError(t, wt.Send(ctx, &claimcheck.Message{Body: []byte("hi")}))
 	require.NoError(t, wt.Flush(ctx))
 	require.Equal(t, 1, countBlobs(t, ctx, bucket), "MinSize=0 must offload even small messages")
+
+	// And it round-trips as an offloaded batch (back-compat).
+	sub := ccpubsub.WrapSubscription(gsub, bucket, ccpubsub.SubscriptionOptions{Options: opts})
+	batch, err := sub.Receive(ctx)
+	require.NoError(t, err)
+	require.True(t, batch.Offloaded(), "MinSize=0 small message should arrive offloaded")
+	msgs, err := batch.Read(ctx)
+	require.NoError(t, err)
+	require.Equal(t, []byte("hi"), msgs[0].Body)
+	batch.Ack()
 }
 
 func TestSend_MinSizeBoundary(t *testing.T) {
