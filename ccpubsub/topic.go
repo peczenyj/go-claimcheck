@@ -6,9 +6,10 @@ import (
 	"sync"
 	"time"
 
-	claimcheck "github.com/peczenyj/go-claimcheck"
 	"gocloud.dev/blob"
 	"gocloud.dev/pubsub"
+
+	claimcheck "github.com/peczenyj/go-claimcheck"
 )
 
 // ErrTopicClosed is returned by Send after the topic is shut down.

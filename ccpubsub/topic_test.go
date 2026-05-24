@@ -5,11 +5,12 @@ import (
 	"testing"
 	"time"
 
-	claimcheck "github.com/peczenyj/go-claimcheck"
-	"github.com/peczenyj/go-claimcheck/ccpubsub"
 	"github.com/stretchr/testify/require"
 	"gocloud.dev/blob/memblob"
 	"gocloud.dev/pubsub/mempubsub"
+
+	claimcheck "github.com/peczenyj/go-claimcheck"
+	"github.com/peczenyj/go-claimcheck/ccpubsub"
 )
 
 // receiveOne wraps gsub and returns the bodies of the next batch.
