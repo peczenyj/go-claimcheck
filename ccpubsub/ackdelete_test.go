@@ -108,3 +108,34 @@ func TestAckAndDelete_InlineIsNoOp(t *testing.T) {
 
 	require.NoError(t, batch.AckAndDelete(ctx)) // no blob to delete
 }
+
+// TestRoundTrip_ProduceConsumeAckDeletes exercises the full v0.3.0 retention
+// story end to end: WrapTopic offloads a message to a blob, WrapSubscription
+// receives it, and ack-deletes removes the blob — leaving an empty bucket.
+func TestRoundTrip_ProduceConsumeAckDeletes(t *testing.T) {
+	ctx := context.Background()
+	bucket := memblob.OpenBucket(nil)
+	t.Cleanup(func() { _ = bucket.Close() })
+	opts := claimcheck.Options{MetadataPrefix: "cc_"}
+
+	topic := mempubsub.NewTopic()
+	gsub := mempubsub.NewSubscription(topic, time.Second)
+	t.Cleanup(func() { _ = topic.Shutdown(ctx); _ = gsub.Shutdown(ctx) })
+
+	wt := ccpubsub.WrapTopic(topic, bucket, ccpubsub.TopicOptions{Options: opts})
+	require.NoError(t, wt.Send(ctx, &claimcheck.Message{Body: []byte("payload")}))
+	require.NoError(t, wt.Flush(ctx))
+	require.Equal(t, 1, countBlobs(t, ctx, bucket), "offload should have written one blob")
+
+	sub := ccpubsub.WrapSubscription(gsub, bucket, ccpubsub.SubscriptionOptions{Options: opts, AckDeletes: true})
+	batch, err := sub.Receive(ctx)
+	require.NoError(t, err)
+	require.True(t, batch.Offloaded())
+
+	msgs, err := batch.Read(ctx)
+	require.NoError(t, err)
+	require.Equal(t, []byte("payload"), msgs[0].Body)
+
+	batch.Ack()
+	require.Equal(t, 0, countBlobs(t, ctx, bucket), "ack-deletes should have removed the blob")
+}
