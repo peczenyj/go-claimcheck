@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [unreleased]
+## [0.2.0] - 2026-05-24
 
 ### Documentation
 
@@ -13,6 +13,10 @@ All notable changes to this project will be documented in this file.
 
 - Add Observer hooks for offload and read
 - Fire ReadDone for inline ccpubsub batches
+
+### Miscellaneous Tasks
+
+- Update changelog
 
 ## [0.1.0] - 2026-05-24
 
