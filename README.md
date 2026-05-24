@@ -205,6 +205,54 @@ _ = claimcheck.Delete(ctx, bucket, parsed) // optional cleanup
 For bounded-memory reads, use `claimcheck.Open` to stream messages in chunks
 instead of `claimcheck.Read`.
 
+## Observability
+
+Set `Options.Observer` to record offload/read metrics. The `Observer` interface
+lives in the core package and pulls in no observability dependency:
+
+```go
+type Observer interface {
+    OffloadDone(ctx context.Context, info claimcheck.OffloadInfo)
+    ReadDone(ctx context.Context, info claimcheck.ReadInfo)
+}
+```
+
+Embed `claimcheck.NopObserver` so future methods stay non-breaking, and override
+the hooks you care about. Each `Info` carries `MsgCount`, `Bytes`, `Duration`,
+`Err`, and (for reads) an `Inline` flag distinguishing offloaded blobs from
+inline messages — enough for offload/unroll latency histograms, byte counters,
+and offloaded-vs-inline ratios. The observer set on `Options` flows through the
+`ccpubsub` layer automatically. See `Example_observer` in the godoc.
+
+### Writing an OpenTelemetry adapter
+
+`claimcheck` keeps `go.opentelemetry.io/otel` out of its dependency graph, so an
+OTel adapter lives in your own code (or a separate module). Because each `Info`
+carries `StartTime` and `Duration`, you can record a correctly-timed span
+retroactively:
+
+```go
+// Illustrative — not part of the module; you supply meter and tracer.
+type otelObserver struct {
+    claimcheck.NopObserver
+    tracer       trace.Tracer
+    offloadBytes metric.Int64Counter
+    offloadDur   metric.Int64Histogram
+}
+
+func (o otelObserver) OffloadDone(ctx context.Context, info claimcheck.OffloadInfo) {
+    o.offloadBytes.Add(ctx, info.Bytes)
+    o.offloadDur.Record(ctx, info.Duration.Microseconds())
+
+    _, span := o.tracer.Start(ctx, "claimcheck.offload",
+        trace.WithTimestamp(info.StartTime))
+    if info.Err != nil {
+        span.RecordError(info.Err)
+    }
+    span.End(trace.WithTimestamp(info.StartTime.Add(info.Duration)))
+}
+```
+
 ## The bucket-binding contract
 
 The claim check only works when the producer and consumer **independently agree**
