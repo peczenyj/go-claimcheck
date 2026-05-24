@@ -5,12 +5,13 @@ import (
 	"testing"
 	"time"
 
-	claimcheck "github.com/peczenyj/go-claimcheck"
-	"github.com/peczenyj/go-claimcheck/ccpubsub"
 	"github.com/stretchr/testify/require"
 	"gocloud.dev/blob/memblob"
 	"gocloud.dev/pubsub"
 	"gocloud.dev/pubsub/mempubsub"
+
+	claimcheck "github.com/peczenyj/go-claimcheck"
+	"github.com/peczenyj/go-claimcheck/ccpubsub"
 )
 
 func TestWrapSubscription_OffloadedRoundTrip(t *testing.T) {

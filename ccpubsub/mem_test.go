@@ -2,13 +2,15 @@ package ccpubsub_test
 
 import (
 	"context"
+	"errors"
 	"io"
 	"testing"
 
-	claimcheck "github.com/peczenyj/go-claimcheck"
-	"github.com/peczenyj/go-claimcheck/ccpubsub"
 	"github.com/stretchr/testify/require"
 	"gocloud.dev/blob/memblob"
+
+	claimcheck "github.com/peczenyj/go-claimcheck"
+	"github.com/peczenyj/go-claimcheck/ccpubsub"
 )
 
 func TestMemSubscription_OffloadedRoundTrip(t *testing.T) {
@@ -87,7 +89,7 @@ func TestMemSubscription_StreamingOpen(t *testing.T) {
 	for {
 		n, err := dec.Decode(buf)
 		got += n
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		require.NoError(t, err)

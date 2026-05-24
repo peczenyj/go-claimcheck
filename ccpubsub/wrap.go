@@ -3,9 +3,10 @@ package ccpubsub
 import (
 	"context"
 
-	claimcheck "github.com/peczenyj/go-claimcheck"
 	"gocloud.dev/blob"
 	"gocloud.dev/pubsub"
+
+	claimcheck "github.com/peczenyj/go-claimcheck"
 )
 
 type wrappedSub struct {

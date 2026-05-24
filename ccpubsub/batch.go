@@ -4,8 +4,9 @@ import (
 	"context"
 	"io"
 
-	claimcheck "github.com/peczenyj/go-claimcheck"
 	"gocloud.dev/blob"
+
+	claimcheck "github.com/peczenyj/go-claimcheck"
 )
 
 // Batch is one received unit: either an offloaded blob (described by a control
@@ -21,8 +22,14 @@ type Batch struct {
 	nack       func()
 }
 
-func newBatch(cm claimcheck.ControlMessage, inlineBody []byte, inlineMeta map[string]string,
-	bucket *blob.Bucket, opts claimcheck.Options, ack, nack func()) *Batch {
+func newBatch(
+	cm claimcheck.ControlMessage,
+	inlineBody []byte,
+	inlineMeta map[string]string,
+	bucket *blob.Bucket,
+	opts claimcheck.Options,
+	ack, nack func(),
+) *Batch {
 	return &Batch{
 		cm: cm, inlineBody: inlineBody, inlineMeta: inlineMeta,
 		bucket: bucket, opts: opts, ack: ack, nack: nack,

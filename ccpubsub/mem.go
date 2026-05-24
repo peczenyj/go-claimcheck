@@ -4,8 +4,9 @@ import (
 	"context"
 	"sync"
 
-	claimcheck "github.com/peczenyj/go-claimcheck"
 	"gocloud.dev/blob"
+
+	claimcheck "github.com/peczenyj/go-claimcheck"
 )
 
 // MemSubscription is an in-memory Subscription for tests and examples. Enqueue
