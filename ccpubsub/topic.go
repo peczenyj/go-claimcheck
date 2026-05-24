@@ -158,10 +158,9 @@ func (t *bufTopic) Shutdown(ctx context.Context) error {
 	}
 
 	t.mu.Lock()
-	err := t.flushLocked(ctx)
+	flushErr := t.flushLocked(ctx)
 	t.mu.Unlock()
-	if err != nil {
-		return err
-	}
-	return t.topic.Shutdown(ctx)
+
+	shutErr := t.topic.Shutdown(ctx)
+	return errors.Join(flushErr, shutErr)
 }
