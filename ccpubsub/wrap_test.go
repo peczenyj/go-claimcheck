@@ -28,7 +28,7 @@ func TestWrapSubscription_OffloadedRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, topic.Send(ctx, &pubsub.Message{Metadata: cm.ToMetadata("cc_")}))
 
-	sub := ccpubsub.WrapSubscription(gsub, bucket, opts)
+	sub := ccpubsub.WrapSubscription(gsub, bucket, ccpubsub.SubscriptionOptions{Options: opts})
 	batch, err := sub.Receive(ctx)
 	require.NoError(t, err)
 	require.True(t, batch.Offloaded())
@@ -51,7 +51,7 @@ func TestWrapSubscription_InlinePassthrough(t *testing.T) {
 
 	require.NoError(t, topic.Send(ctx, &pubsub.Message{Body: []byte("plain")}))
 
-	sub := ccpubsub.WrapSubscription(gsub, bucket, claimcheck.Options{MetadataPrefix: "cc_"})
+	sub := ccpubsub.WrapSubscription(gsub, bucket, ccpubsub.SubscriptionOptions{Options: claimcheck.Options{MetadataPrefix: "cc_"}})
 	batch, err := sub.Receive(ctx)
 	require.NoError(t, err)
 	require.False(t, batch.Offloaded())

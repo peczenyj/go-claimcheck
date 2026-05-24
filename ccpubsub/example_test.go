@@ -34,7 +34,7 @@ func TestReceiveEndToEnd(t *testing.T) {
 	require.NoError(t, topic.Send(ctx, &pubsub.Message{Metadata: cm.ToMetadata("cc_")}))
 
 	// Consumer: wrap, receive, read, ack, clean up.
-	sub := ccpubsub.WrapSubscription(gsub, bucket, opts)
+	sub := ccpubsub.WrapSubscription(gsub, bucket, ccpubsub.SubscriptionOptions{Options: opts})
 	batch, err := sub.Receive(ctx)
 	require.NoError(t, err)
 

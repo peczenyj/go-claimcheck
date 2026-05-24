@@ -22,7 +22,7 @@ func TestSendReceiveEndToEnd(t *testing.T) {
 	topic := mempubsub.NewTopic()
 	gsub := mempubsub.NewSubscription(topic, time.Second)
 	t.Cleanup(func() { _ = gsub.Shutdown(ctx) })
-	sub := ccpubsub.WrapSubscription(gsub, bucket, opts)
+	sub := ccpubsub.WrapSubscription(gsub, bucket, ccpubsub.SubscriptionOptions{Options: opts})
 
 	wt := ccpubsub.WrapTopic(topic, bucket, ccpubsub.TopicOptions{Options: opts, MaxMessages: 3})
 	for _, b := range []string{"p", "q", "r"} {
