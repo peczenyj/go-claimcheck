@@ -16,12 +16,12 @@ Powered by [Go CDK](https://gocloud.dev/) for total provider portability.
 
 ## Features
 
-- **Transparent Unrolling:** Automatically downloads and decodes offloaded blobs during `Receive`.
-- **Explicit Batch Handling:** Optional wrapper to handle raw blob data and metadata manually.
-- **Pluggable Serialization:** Built-in support for NDJSON (JSON Lines) and Length-prefixed binary.
-- **Data Transformation:** Built-in Gzip compression middleware.
-- **Rich Metadata:** Automatically tracks checksums (MD5), file size, and message counts.
-- **Provider Agnostic:** Works with any Pub/Sub and Blob storage supported by Go CDK.
+- **Two layers, your choice:** a low-level **core** (`claimcheck`) for full control over offload/read, and **magic wrappers** (`ccpubsub`) that buffer, offload, and unroll for you.
+- **Blob-level delivery:** the consumer `Batch` Acks/Nacks a whole offloaded blob — the honest unit of delivery for this pattern.
+- **Pluggable Serialization:** built-in NDJSON (JSON Lines) and length-prefixed binary, both streaming for bounded-memory reads.
+- **Data Transformation:** built-in Gzip and Zstd compression middleware.
+- **Rich Metadata:** tracks checksum (MD5), file size, content type/encoding, and message count on every control message.
+- **Provider Agnostic:** works with any Pub/Sub and Blob storage supported by [Go CDK](https://gocloud.dev/).
 
 ## Installation
 
@@ -29,104 +29,83 @@ Powered by [Go CDK](https://gocloud.dev/) for total provider portability.
 go get github.com/peczenyj/go-claimcheck
 ```
 
+## Architecture
+
+The library is two layers. Pick the one that fits how much control you want;
+both speak the same on-blob format, so a producer on one layer interoperates
+with a consumer on the other.
+
+| Layer | Package | Send | Receive |
+| :--- | :--- | :--- | :--- |
+| **Core (DIY)** | `claimcheck` | `Offload` a batch to a blob, attach `ControlMessage` metadata to your own pubsub message | `ParseControlMessage`, then `Read` / `Open` the blob |
+| **Magic (wrappers)** | `ccpubsub` | `WrapTopic` buffers and offloads for you | `WrapSubscription` returns a `Batch` you `Read` and `Ack` |
+
+The core never imports `gocloud.dev/pubsub`: it deals only in blobs and a
+metadata map, so the control message can ride any transport. The `ccpubsub`
+wrappers adapt any gocloud `*pubsub.Topic` / `*pubsub.Subscription`.
+
 ## Quick Start
 
-### 1. Setup Extended Topic
+### Magic wrappers (`ccpubsub`)
+
+The wrappers do the offloading and unrolling for you. The producer buffers
+messages and offloads a batch to one blob — flushed when a threshold is hit, on
+`Flush`, or on `Shutdown` — then publishes a single control message. The consumer
+receives that control message as a `Batch`, reads the blob back, and Acks the
+whole blob.
 
 ```go
 import (
-    "github.com/peczenyj/go-claimcheck/extpubsub"
-    "gocloud.dev/pubsub/mempubsub"
+    "context"
+    "time"
+
+    claimcheck "github.com/peczenyj/go-claimcheck"
+    "github.com/peczenyj/go-claimcheck/ccpubsub"
     "gocloud.dev/blob/memblob"
+    "gocloud.dev/pubsub/mempubsub"
 )
 
-// Initialize base drivers
-baseTopic := mempubsub.NewTopic()
+ctx := context.Background()
 bucket := memblob.OpenBucket(nil)
+baseTopic := mempubsub.NewTopic()
+baseSub := mempubsub.NewSubscription(baseTopic, time.Second)
 
-// Wrap with Claim-Check logic
-opts := extpubsub.Options{
-    MinSize:     1024 * 1024,            // Offload only if >= 1MB
-    Transformer: extpubsub.NewGzipTransformer(), // Compress blobs
-}
-topic := extpubsub.NewTopic(baseTopic, bucket, opts)
+// Both sides MUST agree on the bucket, Serializer, Transformer, and
+// MetadataPrefix. (See "The bucket-binding contract" below.)
+opts := claimcheck.Options{Transformer: claimcheck.NewZstdTransformer()}
 
-// Send messages normally
-err := topic.Send(ctx, &pubsub.Message{Body: []byte("large payload...")})
-```
+// Producer: buffer up to 100 messages per blob (or flush on Shutdown).
+topic := ccpubsub.WrapTopic(baseTopic, bucket, ccpubsub.TopicOptions{
+    Options:     opts,
+    MaxMessages: 100,
+})
+_ = topic.Send(ctx, &claimcheck.Message{Body: []byte("large payload...")})
+_ = topic.Shutdown(ctx) // flushes the buffered batch
 
-### 2. Setup Extended Subscription
-
-```go
-// Wrap base subscription
-baseSub := mempubsub.NewSubscription(baseTopic, 1*time.Minute)
-sub := extpubsub.NewSubscription(baseSub, bucket, opts)
-
-// Receive unrolls automatically
-m, err := sub.Receive(ctx)
-fmt.Printf("Received: %s\n", m.Body)
-m.Ack()
-```
-
-### 3. Explicit Batch Handling (Advanced)
-
-For manual control or when processing messages in bulk from a single blob:
-
-```go
-import "github.com/peczenyj/go-claimcheck/extpubsub"
-
-// Wrap the *pubsub.Subscription for advanced features
-extSub := extpubsub.WrapSubscription(sub, bucket, opts)
-
-// Receive the raw batch control message
-batch, err := extSub.ReceiveBatch(ctx)
+// Consumer: receive the batch, read every message, ack the whole blob.
+sub := ccpubsub.WrapSubscription(baseSub, bucket, opts)
+batch, err := sub.Receive(ctx)
 if err != nil { /* ... */ }
 
-fmt.Printf("Batch URL: %s, Messages: %d\n", batch.URL, batch.MessageCount)
-
-// Download and unroll all messages at once
-msgs, err := batch.Unroll(ctx)
+msgs, err := batch.Read(ctx) // or batch.Open(ctx) to stream with bounded memory
 for _, m := range msgs {
-    fmt.Printf("Unrolled Body: %s\n", m.Body)
+    // ... process m.Body ...
 }
-
-batch.Ack() // Acks the underlying control message
+batch.Ack()              // acknowledges the whole blob
+_ = batch.Delete(ctx)    // optional: remove the blob once consumed
 ```
 
-### 4. Explicit Send-Side Offloading (WrapTopic)
+`WrapTopic` **always** offloads the buffered batch to a blob; the number of
+messages per blob is caller-controlled via `MaxMessages` / `MaxBytes` /
+`FlushInterval` and is otherwise unbounded. A `Batch` may also be *inline*
+(`batch.Offloaded() == false`) when a received message carries no control-message
+metadata — `Read` still returns it, and `Ack`/`Delete` behave sensibly.
 
-For fine-grained, per-message control on the publish side without the driver-level batching:
+### Core API — manual offload/read (`claimcheck`)
 
-```go
-import (
-    "github.com/peczenyj/go-claimcheck/extpubsub"
-    "gocloud.dev/pubsub"
-    "gocloud.dev/pubsub/mempubsub"
-    "gocloud.dev/blob/memblob"
-)
-
-// Initialize base drivers
-baseTopic := mempubsub.NewTopic()
-bucket := memblob.OpenBucket(nil)
-
-// Wrap with per-message offload logic
-opts := extpubsub.Options{
-    MinSize: 1024 * 1024, // Offload only if >= 1MB; 0 = always offload
-}
-topic := extpubsub.WrapTopic(baseTopic, bucket, opts)
-
-// Send — body >= MinSize is written to the bucket; smaller bodies pass through unchanged
-err := topic.Send(ctx, &pubsub.Message{Body: []byte("large payload...")})
-```
-
-The receiving side uses `WrapSubscription` (or `extpubsub.NewSubscription`) with the same bucket and options to transparently unroll offloaded messages.
-
-### 5. Core API — manual offload/read (`claimcheck` package)
-
-The root `claimcheck` package is the low-level foundation the wrappers build on.
-Use it directly when you manage the topic, subscription, and blob bucket
-yourself: offload a batch to a blob, send the returned control message's
-metadata over any transport, then read it back on the other side.
+Use the core directly when you manage the topic, subscription, and bucket
+yourself: offload a batch to a blob, send the returned control message's metadata
+over any transport, then read it back on the other side.
 
 ```go
 import (
@@ -151,13 +130,49 @@ if parsed, ok := claimcheck.ParseControlMessage(metadata, opts.MetadataPrefix); 
 ```
 
 `Options` supports `KeyPrefix`/`KeyFunc` (blob naming), `Serializer` (JSON Lines
-or length-prefixed), `Transformer` (gzip), `VerifyChecksum` (opt-in MD5), and
-`MaxMessageSize`/`MaxBatchSize` (decode safety caps). For bounded-memory reads,
-use `claimcheck.Open` to stream messages in chunks instead of `claimcheck.Read`.
+or length-prefixed), `Transformer` (Gzip or Zstd), `VerifyChecksum` (opt-in MD5),
+and `MaxMessageSize`/`MaxBatchSize` (decode safety caps). For bounded-memory
+reads, use `claimcheck.Open` to stream messages in chunks instead of
+`claimcheck.Read`.
 
-> **Note:** `claimcheck` is the low-level core of an in-progress API redesign.
-> The `extpubsub` wrappers above are being migrated onto it, so the high-level
-> API may change before v1.0.
+## The bucket-binding contract
+
+The claim check only works when the producer and consumer **independently agree**
+on where the blob lives and how it is encoded. There is no negotiation: the
+control message carries the blob key and content-type/encoding, but the consumer
+must already be configured to reach the same storage and decode the same way.
+
+Both sides must share:
+
+- **the same blob bucket** — the consumer must be able to open the exact bucket
+  the producer wrote to (same provider, region, and bucket name/prefix);
+- **a compatible `Serializer`** — the consumer must decode what the producer
+  encoded (JSON Lines vs. length-prefixed);
+- **a compatible `Transformer`** — matching compression (`""`, `gzip`, `zstd`);
+- **the same `MetadataPrefix`** — or the consumer will not recognise the control
+  message and will treat the delivery as an inline (non-offloaded) batch.
+
+If these drift, the failure mode is silent or late: a mismatched `MetadataPrefix`
+makes the consumer ignore the pointer and hand back the raw control message as an
+inline `Batch`; a wrong bucket makes `Read` fail to open the blob; a mismatched
+serializer or transformer surfaces as a decode error (or, with
+`VerifyChecksum`, an `ErrChecksumMismatch`). Treat the bucket + options as a
+shared contract you deploy to both sides together.
+
+## Delivery semantics
+
+This library is **at-least-once**, and the unit of delivery is the **whole blob**:
+
+- `WrapSubscription` Acks/Nacks the underlying pubsub message, which points at one
+  offloaded blob. `batch.Ack()` acknowledges every message in that blob at once;
+  `batch.Nack()` requests redelivery of the entire blob.
+- If your consumer crashes after reading a blob but before `Ack`, the broker
+  redelivers the same control message and you process the **whole blob again**.
+  Make consumers **idempotent** (e.g. dedupe on a message key) — there is no
+  partial-blob acknowledgement.
+- Offloaded blobs are **not** deleted automatically. Call `batch.Delete(ctx)`
+  (or `claimcheck.Delete`) once you have durably processed the batch, or run a
+  lifecycle/TTL policy on the bucket to reclaim storage.
 
 ## Development
 

@@ -6,13 +6,30 @@ This document provides architectural overview, development workflows, and coding
 
 `go-claimcheck` is a Go library that implements the **Claim Check** pattern in a cloud-agnostic way. It leverages [Go CDK](https://gocloud.dev/) to transparently offload large message payloads to blob storage (like S3, GCS, or Azure Blob) while sending lightweight pointers (claims) through Pub/Sub systems (like Kafka, SNS/SQS, or RabbitMQ).
 
-### Core Components (package `extpubsub`)
+The library is two layers: a transport-agnostic **core** (`claimcheck`, repo
+root) and **magic wrappers** (`ccpubsub`) that wire it onto Go CDK pubsub.
 
-- **Topic Wrapper:** Intercepts `Send` calls. If a message batch exceeds a configurable `MinSize` threshold (in `Options`), it serializes the payload, uploads it to a `blob.Bucket`, and sends a control message with the blob URL and metadata. If below the threshold, messages are sent directly.
-- **Subscription Wrapper:** Intercepts `Receive` calls. It detects control messages, automatically downloads the corresponding blob from the `blob.Bucket`, and "unrolls" it back into the original messages.
-- **Explicit Batch Wrapper:** A second layer of the API (via `WrapSubscription`) that allows users to receive the raw control message as a `Batch`, providing metadata (URL, checksum, count) and manual `Unroll` capabilities.
-- **Serializers:** Define how message batches are encoded into blobs (e.g., JSON Lines).
-- **Transformers:** Middleware for blob data, such as Gzip compression.
+### Core Package (`claimcheck`, repo root)
+
+The foundation. It deals only in blobs and a metadata map and never imports
+`gocloud.dev/pubsub`, so the control message can ride any transport.
+
+- **`Offload`:** serializes a batch of `*Message`, optionally transforms (compresses) it, writes it to a `blob.Bucket`, and returns a `ControlMessage` (blob key, message count, content type/encoding, file size, MD5 checksum).
+- **`Read` / `Open`:** read a blob back from its `ControlMessage`. `Read` returns all messages; `Open` returns a streaming `Decoder` for bounded-memory reads. Honors `MaxMessageSize`/`MaxBatchSize` caps and optional MD5 `VerifyChecksum`.
+- **`Delete`:** removes an offloaded blob.
+- **`ControlMessage` + `ToMetadata`/`ParseControlMessage`:** the pointer envelope, marshalled to/from a `map[string]string` under a configurable `MetadataPrefix`.
+- **Serializers:** how message batches are encoded into blobs — JSON Lines or length-prefixed binary; both stream.
+- **Transformers:** middleware for blob bytes — Noop, Gzip, or Zstd compression.
+
+### Wrappers Package (`ccpubsub`)
+
+The "magic" layer. Both wrappers adapt existing gocloud objects rather than
+implementing gocloud's driver interfaces.
+
+- **`WrapTopic`:** buffers `Send`s and offloads the buffered batch to one blob, publishing a single control message. Flushes on a `MaxMessages`/`MaxBytes`/`FlushInterval` threshold, on explicit `Flush`, or on `Shutdown`.
+- **`WrapSubscription`:** adapts any `*pubsub.Subscription` into a claim-check `Subscription` whose `Receive` returns a `Batch`. Ack/Nack apply to the whole offloaded blob (the unit of delivery), not per message.
+- **`Batch`:** `Read`/`Open` the blob (or an inline message), `Ack`/`Nack` the whole unit, `Delete` the blob.
+- **`MemSubscription`:** an in-memory `Subscription` for tests.
 
 ## Building and Running
 
@@ -44,7 +61,7 @@ The project uses [Task](https://taskfile.dev/) for workflow automation. A `Makef
 ### Testing Practices
 
 - Tests are located alongside the source code in `*_test.go` files.
-- Scenario tests (End-to-End flows with in-memory drivers) are found in `extpubsub/scenario_test.go`.
+- End-to-end flows with in-memory drivers live in `ccpubsub/sendrecv_test.go` and the runnable examples in `*example_test.go`. Integration tests against real brokers (behind the `integration` build tag) are in `ccpubsub/integration_test.go`.
 - Use `testify` for assertions.
 - When adding new features, ensure appropriate unit and/or scenario tests are included.
 - For components requiring external dependencies (like cloud providers), use the Go CDK `memdriver` or `memblob` for in-memory testing when possible.

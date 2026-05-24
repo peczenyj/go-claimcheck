@@ -23,7 +23,7 @@
 //
 // CLAIMCHECK_IT_PUBSUB_URL is passed to both pubsub.OpenTopic and
 // pubsub.OpenSubscription, so it must be valid as both for the chosen driver.
-package extpubsub_test
+package ccpubsub_test
 
 import (
 	"context"
@@ -50,16 +50,16 @@ import (
 	"github.com/testcontainers/testcontainers-go/modules/rabbitmq"
 	"github.com/testcontainers/testcontainers-go/modules/redpanda"
 	"gocloud.dev/blob"
-	"gocloud.dev/pubsub"
-
 	_ "gocloud.dev/blob/fileblob"
 	_ "gocloud.dev/blob/memblob"
 	_ "gocloud.dev/blob/s3blob"
+	"gocloud.dev/pubsub"
 	_ "gocloud.dev/pubsub/kafkapubsub"
 	_ "gocloud.dev/pubsub/mempubsub"
 	_ "gocloud.dev/pubsub/rabbitpubsub"
 
-	"github.com/peczenyj/go-claimcheck/extpubsub"
+	claimcheck "github.com/peczenyj/go-claimcheck"
+	"github.com/peczenyj/go-claimcheck/ccpubsub"
 )
 
 const (
@@ -111,9 +111,8 @@ func TestIntegrationExternal(t *testing.T) {
 }
 
 // runRoundTrip opens the topic, subscription, and bucket from their URLs, wraps
-// the topic/subscription with the claim-check offload (forcing every message to
-// be offloaded via MinSize: 1), publishes count messages, and verifies they all
-// come back.
+// the topic/subscription with the claim-check offload (one blob per message via
+// MaxMessages: 1), publishes count messages, and verifies they all come back.
 func runRoundTrip(t *testing.T, topicURL, subURL, blobURL string, count int) {
 	t.Helper()
 	ctx := context.Background()
@@ -130,17 +129,18 @@ func runRoundTrip(t *testing.T, topicURL, subURL, blobURL string, count int) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = sub.Shutdown(ctx) })
 
-	opts := extpubsub.Options{MinSize: 1} // force offload of every message
-	extTopic := extpubsub.WrapTopic(topic, bucket, opts)
-	wrapSub := extpubsub.WrapSubscription(sub, bucket, opts)
+	// MaxMessages: 1 offloads every message to its own blob and publishes one
+	// control message per message, mirroring the per-message offload semantics.
+	ccTopic := ccpubsub.WrapTopic(topic, bucket, ccpubsub.TopicOptions{MaxMessages: 1})
+	ccSub := ccpubsub.WrapSubscription(sub, bucket, claimcheck.Options{})
 
-	publishMessages(t, extTopic, count)
-	consumeMessages(t, wrapSub, count)
+	publishMessages(t, ccTopic, count)
+	consumeMessages(t, ccSub, count)
 }
 
 // publishMessages sends count JSON messages through the wrapped topic, logging
-// progress every progressInterval messages.
-func publishMessages(t *testing.T, extTopic *extpubsub.Topic, count int) {
+// progress every progressInterval messages, then flushes any buffered remainder.
+func publishMessages(t *testing.T, ccTopic ccpubsub.Topic, count int) {
 	t.Helper()
 	ctx := context.Background()
 
@@ -151,28 +151,30 @@ func publishMessages(t *testing.T, extTopic *extpubsub.Topic, count int) {
 			"random":    rand.Int64(),
 		})
 		require.NoError(t, err)
-		require.NoError(t, extTopic.Send(ctx, &pubsub.Message{Body: body}))
+		require.NoError(t, ccTopic.Send(ctx, &claimcheck.Message{Body: body}))
 
 		if n := i + 1; n%progressInterval == 0 || n == count {
 			t.Logf("writing %d of %d messages", n, count)
 		}
 	}
+
+	require.NoError(t, ccTopic.Flush(ctx))
 }
 
-// consumeMessages receives and unrolls messages from the wrapped subscription
-// until count have been collected, logging progress every progressInterval
+// consumeMessages receives and reads batches from the wrapped subscription until
+// count messages have been collected, logging progress every progressInterval
 // messages and verifying each decodes to the expected shape.
-func consumeMessages(t *testing.T, wrapSub *extpubsub.Subscription, count int) {
+func consumeMessages(t *testing.T, ccSub ccpubsub.Subscription, count int) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), receiveTimeout)
 	defer cancel()
 
 	received := 0
 	for received < count {
-		batch, err := wrapSub.ReceiveBatch(ctx)
+		batch, err := ccSub.Receive(ctx)
 		require.NoError(t, err)
 
-		msgs, err := batch.Unroll(ctx)
+		msgs, err := batch.Read(ctx)
 		require.NoError(t, err)
 
 		for _, m := range msgs {
