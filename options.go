@@ -26,6 +26,8 @@ type Options struct {
 	MaxMessageSize int
 	// MaxBatchSize caps total stored bytes read from a blob (0 = unlimited).
 	MaxBatchSize int
+	// Observer receives offload/read notifications. Defaults to NopObserver.
+	Observer Observer
 }
 
 // SetDefaults fills in default values. Safe to call more than once.
@@ -41,5 +43,8 @@ func (o *Options) SetDefaults() {
 	}
 	if o.KeyFunc == nil {
 		o.KeyFunc = func([]*Message) string { return uuid.New().String() }
+	}
+	if o.Observer == nil {
+		o.Observer = NopObserver{}
 	}
 }

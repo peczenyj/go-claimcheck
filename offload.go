@@ -4,15 +4,29 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"time"
 
 	"gocloud.dev/blob"
 )
 
 // Offload writes msgs as a single blob to bucket and returns the ControlMessage
 // describing it. The blob key is opts.KeyPrefix + opts.KeyFunc(msgs).
-func Offload(ctx context.Context, bucket *blob.Bucket, opts Options, msgs []*Message) (ControlMessage, error) {
+func Offload(ctx context.Context, bucket *blob.Bucket, opts Options, msgs []*Message) (cm ControlMessage, err error) {
 	opts.SetDefaults()
+	start := time.Now()
 	key := opts.KeyPrefix + opts.KeyFunc(msgs)
+
+	defer func() {
+		opts.Observer.OffloadDone(ctx, OffloadInfo{
+			Key:       key,
+			MsgCount:  len(msgs),
+			Bytes:     cm.FileSize,
+			Encoding:  opts.Transformer.ContentEncoding(),
+			StartTime: start,
+			Duration:  time.Since(start),
+			Err:       err,
+		})
+	}()
 
 	var blobMeta map[string]string
 	if opts.InjectBlobMetadata {
