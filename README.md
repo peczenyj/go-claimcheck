@@ -16,8 +16,8 @@ Powered by [Go CDK](https://gocloud.dev/) for total provider portability.
 
 ## Features
 
-- **Two layers, your choice:** a low-level **core** (`claimcheck`) for full control over offload/read, and **magic wrappers** (`ccpubsub`) that buffer, offload, and unroll for you.
-- **Blob-level delivery:** the consumer `Batch` Acks/Nacks a whole offloaded blob — the honest unit of delivery for this pattern.
+- **Two API layers:** a low-level **core** (`claimcheck`) for full control over offload and read, and a **Pub/Sub integration layer** (`ccpubsub`) that handles buffering, offloading, and unrolling automatically.
+- **Blob-level delivery:** the consumer `Batch` acknowledges or negatively-acknowledges a whole offloaded blob — the natural unit of delivery for this pattern.
 - **Pluggable Serialization:** built-in NDJSON (JSON Lines) and length-prefixed binary, both streaming for bounded-memory reads.
 - **Data Transformation:** built-in Gzip and Zstd compression middleware.
 - **Rich Metadata:** tracks checksum (MD5), file size, content type/encoding, and message count on every control message.
@@ -31,14 +31,14 @@ go get github.com/peczenyj/go-claimcheck
 
 ## Architecture
 
-The library is two layers. Pick the one that fits how much control you want;
-both speak the same on-blob format, so a producer on one layer interoperates
-with a consumer on the other.
+The library is organized in two layers. Choose the one that matches the level of
+control you need; both share the same on-blob format, so a producer using one
+layer interoperates with a consumer using the other.
 
 | Layer | Package | Send | Receive |
 | :--- | :--- | :--- | :--- |
-| **Core (DIY)** | `claimcheck` | `Offload` a batch to a blob, attach `ControlMessage` metadata to your own pubsub message | `ParseControlMessage`, then `Read` / `Open` the blob |
-| **Magic (wrappers)** | `ccpubsub` | `WrapTopic` buffers and offloads for you | `WrapSubscription` returns a `Batch` you `Read` and `Ack` |
+| **Core (low-level)** | `claimcheck` | `Offload` a batch to a blob, attach `ControlMessage` metadata to your own pubsub message | `ParseControlMessage`, then `Read` / `Open` the blob |
+| **Pub/Sub integration** | `ccpubsub` | `WrapTopic` buffers and offloads automatically | `WrapSubscription` returns a `Batch` to `Read` and `Ack` |
 
 The core never imports `gocloud.dev/pubsub`: it deals only in blobs and a
 metadata map, so the control message can ride any transport. The `ccpubsub`
@@ -46,9 +46,9 @@ wrappers adapt any gocloud `*pubsub.Topic` / `*pubsub.Subscription`.
 
 ## Quick Start
 
-### Magic wrappers (`ccpubsub`)
+### Pub/Sub integration layer (`ccpubsub`)
 
-The wrappers do the offloading and unrolling for you. The producer buffers
+These wrappers perform the offloading and unrolling automatically. The producer buffers
 messages and offloads a batch to one blob — flushed when a threshold is hit, on
 `Flush`, or on `Shutdown` — then publishes a single control message. The consumer
 receives that control message as a `Batch`, reads the blob back, and Acks the
@@ -99,7 +99,8 @@ _ = batch.Delete(ctx)    // optional: remove the blob once consumed
 messages per blob is caller-controlled via `MaxMessages` / `MaxBytes` /
 `FlushInterval` and is otherwise unbounded. A `Batch` may also be *inline*
 (`batch.Offloaded() == false`) when a received message carries no control-message
-metadata — `Read` still returns it, and `Ack`/`Delete` behave sensibly.
+metadata — `Read` still returns the message, `Ack` acknowledges it, and `Delete`
+is a no-op (there is no blob to remove).
 
 ### Core API — manual offload/read (`claimcheck`)
 

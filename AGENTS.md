@@ -6,8 +6,9 @@ This document provides architectural overview, development workflows, and coding
 
 `go-claimcheck` is a Go library that implements the **Claim Check** pattern in a cloud-agnostic way. It leverages [Go CDK](https://gocloud.dev/) to transparently offload large message payloads to blob storage (like S3, GCS, or Azure Blob) while sending lightweight pointers (claims) through Pub/Sub systems (like Kafka, SNS/SQS, or RabbitMQ).
 
-The library is two layers: a transport-agnostic **core** (`claimcheck`, repo
-root) and **magic wrappers** (`ccpubsub`) that wire it onto Go CDK pubsub.
+The library is organized in two layers: a transport-agnostic **core**
+(`claimcheck`, repo root) and a **Pub/Sub integration layer** (`ccpubsub`) that
+wires it onto Go CDK pubsub.
 
 ### Core Package (`claimcheck`, repo root)
 
@@ -21,9 +22,9 @@ The foundation. It deals only in blobs and a metadata map and never imports
 - **Serializers:** how message batches are encoded into blobs — JSON Lines or length-prefixed binary; both stream.
 - **Transformers:** middleware for blob bytes — Noop, Gzip, or Zstd compression.
 
-### Wrappers Package (`ccpubsub`)
+### Pub/Sub Integration Layer (`ccpubsub`)
 
-The "magic" layer. Both wrappers adapt existing gocloud objects rather than
+The high-level layer. Both wrappers adapt existing gocloud objects rather than
 implementing gocloud's driver interfaces.
 
 - **`WrapTopic`:** buffers `Send`s and offloads the buffered batch to one blob, publishing a single control message. Flushes on a `MaxMessages`/`MaxBytes`/`FlushInterval` threshold, on explicit `Flush`, or on `Shutdown`.
