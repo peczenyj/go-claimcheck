@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [unreleased]
+## [0.3.0] - 2026-05-24
 
 ### Bug Fixes
 
@@ -18,6 +18,10 @@ All notable changes to this project will be documented in this file.
 - Stamp created_at into blob metadata when InjectBlobMetadata is set
 - WrapSubscription takes SubscriptionOptions (adds AckDeletes flag)
 - Add AckDeletes mode and Batch.AckAndDelete (ack then delete)
+
+### Miscellaneous Tasks
+
+- Update changelog
 
 ### Testing
 
