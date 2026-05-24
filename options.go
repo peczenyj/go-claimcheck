@@ -15,9 +15,10 @@ type Options struct {
 	// KeyFunc returns the unique portion of the blob key. Final key is
 	// KeyPrefix + KeyFunc(msgs). Defaults to a random UUID.
 	KeyFunc func(msgs []*Message) string
-	// MinSize is reserved for a future size threshold below which messages are
-	// sent inline instead of offloaded. It is NOT yet honored: the ccpubsub
-	// wrappers currently always offload. See issue #23.
+	// MinSize is a byte threshold used by the ccpubsub send wrapper: a message
+	// whose Body is smaller than MinSize is published inline (not offloaded to a
+	// blob). 0 (the default) offloads every message. It has no effect on the
+	// core Offload, which always writes a blob.
 	MinSize int
 	// InjectBlobMetadata, if true, also writes msg_count to the blob object.
 	InjectBlobMetadata bool

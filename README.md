@@ -209,6 +209,28 @@ _ = claimcheck.Delete(ctx, bucket, parsed) // optional cleanup
 For bounded-memory reads, use `claimcheck.Open` to stream messages in chunks
 instead of `claimcheck.Read`.
 
+## Conditional offload
+
+By default every message produced through `WrapTopic` is offloaded to a blob.
+Set `Options.MinSize` to skip the blob for small payloads: a message whose
+`Body` is smaller than `MinSize` is published **inline** (a plain Pub/Sub
+message carrying the body and metadata), while messages at or above `MinSize`
+are buffered and offloaded as usual.
+
+```go
+opts := claimcheck.Options{MinSize: 64 * 1024} // offload only payloads >= 64 KiB
+topic := ccpubsub.WrapTopic(baseTopic, bucket, ccpubsub.TopicOptions{Options: opts})
+```
+
+The consumer needs no special handling — `WrapSubscription` already returns
+inline messages as a `Batch` whose `Offloaded()` is `false` and whose `Read`
+yields the original message. `MinSize` is `0` by default, preserving the
+always-offload behavior.
+
+Inline messages are published immediately and do not pass through the offload
+buffer, so a small message may be delivered before previously buffered larger
+ones; `WrapTopic` does not guarantee ordering across the inline/offload boundary.
+
 ## Observability
 
 Set `Options.Observer` to record offload/read metrics. The `Observer` interface
