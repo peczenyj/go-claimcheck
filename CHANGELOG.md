@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [unreleased]
+## [0.1.0] - 2026-05-24
 
 ### Documentation
 
@@ -11,6 +11,8 @@ All notable changes to this project will be documented in this file.
 - Add WrapTopic quick-start example and fix MinSize wording
 - Add core claimcheck package (DIY offload/read) section
 - Rewrite around core + ccpubsub; remove legacy extpubsub
+- Replace informal "magic" wording with "Pub/Sub integration layer"
+- Restructure Quick Start as progressive, tested examples
 
 ### Features
 
@@ -30,6 +32,7 @@ All notable changes to this project will be documented in this file.
 
 ### Miscellaneous Tasks
 
+- Update changelog
 - Update changelog
 - Update changelog
 
