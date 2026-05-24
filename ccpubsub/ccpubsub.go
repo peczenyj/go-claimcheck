@@ -14,6 +14,8 @@ var ErrSubscriptionClosed = errors.New("ccpubsub: subscription closed")
 
 // ErrInlineBatch is returned by Batch.Open when the batch is an inline
 // (non-offloaded) message and therefore has no blob to stream.
+//
+// Deprecated: Batch.Open now supports inline messages directly.
 var ErrInlineBatch = errors.New("ccpubsub: batch is inline, not offloaded")
 
 // Subscription is the claim-check consumer contract. Unlike a gocloud

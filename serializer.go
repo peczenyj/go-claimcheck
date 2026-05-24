@@ -45,12 +45,13 @@ func (s *JSONLinesSerializer) Encode(w io.Writer, msgs []*Message) error {
 	return nil
 }
 
-func (s *JSONLinesSerializer) NewDecoder(r io.Reader, _ int) Decoder {
-	return &jsonLinesDecoder{dec: json.NewDecoder(r)}
+func (s *JSONLinesSerializer) NewDecoder(r io.Reader, maxMessageSize int) Decoder {
+	return &jsonLinesDecoder{dec: json.NewDecoder(r), max: maxMessageSize}
 }
 
 type jsonLinesDecoder struct {
 	dec *json.Decoder
+	max int
 }
 
 func (d *jsonLinesDecoder) Decode(buf []*Message) (int, error) {
@@ -59,11 +60,26 @@ func (d *jsonLinesDecoder) Decode(buf []*Message) (int, error) {
 		if !d.dec.More() {
 			return n, io.EOF
 		}
-		var m Message
-		if err := d.dec.Decode(&m); err != nil {
-			return n, err
+		if d.max > 0 {
+			var raw json.RawMessage
+			if err := d.dec.Decode(&raw); err != nil {
+				return n, err
+			}
+			if len(raw) > d.max {
+				return n, ErrMessageTooLarge
+			}
+			var m Message
+			if err := json.Unmarshal(raw, &m); err != nil {
+				return n, err
+			}
+			buf[n] = &m
+		} else {
+			var m Message
+			if err := d.dec.Decode(&m); err != nil {
+				return n, err
+			}
+			buf[n] = &m
 		}
-		buf[n] = &m
 		n++
 	}
 	return n, nil

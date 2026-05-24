@@ -49,8 +49,14 @@ func ParseControlMessage(md map[string]string, prefix string) (ControlMessage, b
 	if !ok || v == "" {
 		return ControlMessage{}, false
 	}
-	count, _ := strconv.Atoi(md[prefix+fieldMessageCount])
-	size, _ := strconv.ParseInt(md[prefix+fieldFileSize], 10, 64)
+	count, err := strconv.Atoi(md[prefix+fieldMessageCount])
+	if err != nil {
+		return ControlMessage{}, false
+	}
+	size, err := strconv.ParseInt(md[prefix+fieldFileSize], 10, 64)
+	if err != nil {
+		return ControlMessage{}, false
+	}
 	return ControlMessage{
 		Version:         v,
 		Key:             md[prefix+fieldKey],
