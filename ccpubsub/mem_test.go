@@ -60,8 +60,19 @@ func TestMemSubscription_InlineMessage(t *testing.T) {
 	require.Len(t, msgs, 1)
 	require.Equal(t, "inline-body", string(msgs[0].Body))
 
-	_, _, err = batch.Open(ctx)
-	require.ErrorIs(t, err, ccpubsub.ErrInlineBatch)
+	dec, closer, err := batch.Open(ctx)
+	require.NoError(t, err)
+	defer closer.Close()
+
+	buf := make([]*claimcheck.Message, 1)
+	n, err := dec.Decode(buf)
+	require.NoError(t, err)
+	require.Equal(t, 1, n)
+	require.Equal(t, "inline-body", string(buf[0].Body))
+
+	n, err = dec.Decode(buf)
+	require.ErrorIs(t, err, io.EOF)
+	require.Equal(t, 0, n)
 	require.NoError(t, batch.Delete(ctx)) // no-op for inline
 }
 

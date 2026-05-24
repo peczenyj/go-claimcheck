@@ -184,7 +184,12 @@ type limitedReader struct {
 
 func (l *limitedReader) Read(p []byte) (int, error) {
 	if l.remaining <= 0 {
-		return 0, ErrBatchTooLarge
+		var peek [1]byte
+		n, err := l.r.Read(peek[:])
+		if n > 0 || (err != nil && err != io.EOF) {
+			return 0, ErrBatchTooLarge
+		}
+		return 0, io.EOF
 	}
 	if int64(len(p)) > l.remaining {
 		p = p[:l.remaining]

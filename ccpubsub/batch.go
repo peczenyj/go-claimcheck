@@ -64,12 +64,58 @@ func (b *Batch) Read(ctx context.Context) ([]*claimcheck.Message, error) {
 }
 
 // Open returns a streaming decoder over the blob for bounded-memory reads, plus
-// an io.Closer the caller MUST close. It returns ErrInlineBatch for an inline batch.
+// an io.Closer the caller MUST close.
 func (b *Batch) Open(ctx context.Context) (claimcheck.Decoder, io.Closer, error) {
 	if !b.Offloaded() {
-		return nil, nil, ErrInlineBatch
+		dec := &inlineDecoder{msg: &claimcheck.Message{Body: b.inlineBody, Metadata: b.inlineMeta}}
+		closer := &inlineCloser{
+			ctx:      ctx,
+			observer: b.opts.Observer,
+			bytes:    int64(len(b.inlineBody)),
+			start:    time.Now(),
+		}
+		return dec, closer, nil
 	}
 	return claimcheck.Open(ctx, b.bucket, b.cm, b.opts)
+}
+
+type inlineDecoder struct {
+	msg  *claimcheck.Message
+	done bool
+}
+
+func (d *inlineDecoder) Decode(buf []*claimcheck.Message) (int, error) {
+	if d.done {
+		return 0, io.EOF
+	}
+	if len(buf) > 0 {
+		buf[0] = d.msg
+		d.done = true
+		return 1, nil
+	}
+	return 0, nil
+}
+
+type inlineCloser struct {
+	ctx      context.Context
+	observer claimcheck.Observer
+	bytes    int64
+	start    time.Time
+	fired    bool
+}
+
+func (c *inlineCloser) Close() error {
+	if !c.fired {
+		c.fired = true
+		c.observer.ReadDone(c.ctx, claimcheck.ReadInfo{
+			MsgCount:  1,
+			Bytes:     c.bytes,
+			Inline:    true,
+			StartTime: c.start,
+			Duration:  time.Since(c.start),
+		})
+	}
+	return nil
 }
 
 // Delete removes the offloaded blob. It is a no-op for an inline batch.
