@@ -30,7 +30,10 @@ func Offload(ctx context.Context, bucket *blob.Bucket, opts Options, msgs []*Mes
 
 	var blobMeta map[string]string
 	if opts.InjectBlobMetadata {
-		blobMeta = map[string]string{"msg_count": strconv.Itoa(len(msgs))}
+		blobMeta = map[string]string{
+			"msg_count":  strconv.Itoa(len(msgs)),
+			"created_at": time.Now().UTC().Format(time.RFC3339),
+		}
 	}
 
 	w, err := bucket.NewWriter(ctx, key, &blob.WriterOptions{
