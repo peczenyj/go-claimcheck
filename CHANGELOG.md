@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 - Document integration tests and CLAIMCHECK_IT_* env vars
 - Add WrapTopic quick-start example and fix MinSize wording
 - Add core claimcheck package (DIY offload/read) section
+- Rewrite around core + ccpubsub; remove legacy extpubsub
 
 ### Features
 
@@ -25,9 +26,11 @@ All notable changes to this project will be documented in this file.
 - *(ccpubsub)* Add Subscription interface, Batch, and in-memory impl
 - *(ccpubsub)* Add WrapSubscription adapter over gocloud *pubsub.Subscription
 - *(ccpubsub)* Add Topic interface and buffering send wrapper
+- *(core)* Add zstd transformer
 
 ### Miscellaneous Tasks
 
+- Update changelog
 - Update changelog
 
 ### Refactor
