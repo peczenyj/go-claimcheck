@@ -81,6 +81,9 @@ func (t *bufTopic) Send(ctx context.Context, m *claimcheck.Message) error {
 	if t.closed {
 		return ErrTopicClosed
 	}
+	if t.opts.MinSize > 0 && len(m.Body) < t.opts.MinSize {
+		return t.sendInlineLocked(ctx, m)
+	}
 	t.buf = append(t.buf, m)
 	t.bufBytes += len(m.Body)
 	if (t.maxMessages > 0 && len(t.buf) >= t.maxMessages) ||
@@ -88,6 +91,14 @@ func (t *bufTopic) Send(ctx context.Context, m *claimcheck.Message) error {
 		return t.flushLocked(ctx)
 	}
 	return nil
+}
+
+// sendInlineLocked publishes m as a plain pub/sub message — body and metadata,
+// no control-message metadata and no blob. The consumer parses no control
+// message and yields an inline Batch. Used for messages smaller than MinSize.
+// Callers must hold t.mu.
+func (t *bufTopic) sendInlineLocked(ctx context.Context, m *claimcheck.Message) error {
+	return t.topic.Send(ctx, &pubsub.Message{Body: m.Body, Metadata: m.Metadata})
 }
 
 func (t *bufTopic) Flush(ctx context.Context) error {
