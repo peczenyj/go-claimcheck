@@ -9,10 +9,22 @@ All notable changes to this project will be documented in this file.
 - Clarify WrapTopic always-offload default and embedding caveat
 - Document integration tests and CLAIMCHECK_IT_* env vars
 - Add WrapTopic quick-start example and fix MinSize wording
+- Add core claimcheck package (DIY offload/read) section
 
 ### Features
 
 - Make WrapTopic offload large messages per-message
+- *(core)* Add Message and ControlMessage envelope
+- *(core)* Add Noop and Gzip transformers
+- *(core)* Add Serializer interface and JSONLines streaming decoder
+- *(core)* Add Options and SetDefaults
+- *(core)* Add length-prefixed serializer with uint32 and size guard
+- *(core)* Add Offload
+- *(core)* Add Open, Read, batch-size limiter, and checksum verification
+- *(core)* Add Delete
+- *(ccpubsub)* Add Subscription interface, Batch, and in-memory impl
+- *(ccpubsub)* Add WrapSubscription adapter over gocloud *pubsub.Subscription
+- *(ccpubsub)* Add Topic interface and buffering send wrapper
 
 ### Miscellaneous Tasks
 
@@ -28,6 +40,10 @@ All notable changes to this project will be documented in this file.
 - Assert failed WrapTopic offload publishes no control message
 - Add claim-check integration test over real broker + blob
 - Split integration test into Kafka, RabbitMQ, and external cases
+- *(core)* Add DIY round-trip example and satisfy lint
+- *(ccpubsub)* Add end-to-end receive round-trip and satisfy lint
+- *(ccpubsub)* Cover background FlushInterval timer
+- *(ccpubsub)* Add end-to-end send/receive round-trip and satisfy lint
 
 ### Build
 
