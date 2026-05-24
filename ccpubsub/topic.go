@@ -135,7 +135,9 @@ func (t *bufTopic) flushLoop(interval time.Duration) {
 			return
 		case <-ticker.C:
 			t.mu.Lock()
-			_ = t.flushLocked(context.Background())
+			ctx, cancel := context.WithTimeout(context.Background(), interval)
+			_ = t.flushLocked(ctx)
+			cancel()
 			t.mu.Unlock()
 		}
 	}
