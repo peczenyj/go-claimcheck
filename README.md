@@ -296,6 +296,61 @@ This library is **at-least-once**, and the unit of delivery is the **whole blob*
   (or `claimcheck.Delete`) once you have durably processed the batch, or run a
   lifecycle/TTL policy on the bucket to reclaim storage.
 
+## Blob retention and cleanup
+
+Delivery is at-least-once and deleting the offloaded blob is the **consumer's**
+responsibility. Two things prevent blobs from accumulating:
+
+**1. Ack-deletes (recommended).** Create the subscription with `AckDeletes` so
+acking a batch also removes its blob (ack first, then a best-effort delete):
+
+```go
+sub := ccpubsub.WrapSubscription(baseSub, bucket, ccpubsub.SubscriptionOptions{
+    Options:    claimcheck.Options{MetadataPrefix: "cc_"},
+    AckDeletes: true,
+})
+// batch.Ack() now also deletes the blob.
+```
+
+For explicit error handling, call `batch.AckAndDelete(ctx)` instead of `Ack()`.
+The ack-then-delete ordering is deliberate: a crash after ack but before delete
+leaves an orphan (swept by the lifecycle policy below); a crash before ack means
+neither ran, so redelivery still finds the blob present.
+
+**2. A bucket lifecycle policy (backstop).** Set an object-expiration rule on the
+bucket, scoped to your `KeyPrefix`, with an age longer than (max broker
+retention + worst-case processing time). It acts on the object's native creation
+time — no library cooperation needed — and mops up anything ack-deletes misses
+(consumers that never delete, or the post-ack crash window).
+
+S3:
+
+```json
+{
+  "Rules": [{
+    "ID": "expire-claimcheck-blobs",
+    "Filter": { "Prefix": "claimcheck/" },
+    "Status": "Enabled",
+    "Expiration": { "Days": 7 }
+  }]
+}
+```
+
+GCS:
+
+```json
+{
+  "rule": [{
+    "action": { "type": "Delete" },
+    "condition": { "age": 7, "matchesPrefix": ["claimcheck/"] }
+  }]
+}
+```
+
+The producer also self-cleans: if publishing the control message fails after the
+blob is written, the buffering `WrapTopic` deletes the orphaned blob before
+returning the error.
+
 ## Development
 
 This project uses [Task](https://taskfile.dev/) to manage the development workflow.
