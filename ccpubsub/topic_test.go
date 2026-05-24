@@ -112,3 +112,27 @@ func TestWrapTopic_SendAfterShutdown(t *testing.T) {
 	err := wt.Send(ctx, &claimcheck.Message{Body: []byte("late")})
 	require.ErrorIs(t, err, ccpubsub.ErrTopicClosed)
 }
+
+func TestWrapTopic_FlushInterval(t *testing.T) {
+	ctx := context.Background()
+	bucket := memblob.OpenBucket(nil)
+	t.Cleanup(func() { _ = bucket.Close() })
+	opts := claimcheck.Options{MetadataPrefix: "cc_"}
+
+	topic := mempubsub.NewTopic()
+	gsub := mempubsub.NewSubscription(topic, time.Second)
+	t.Cleanup(func() { _ = topic.Shutdown(ctx); _ = gsub.Shutdown(ctx) })
+	sub := ccpubsub.WrapSubscription(gsub, bucket, opts)
+
+	// No count/byte threshold — only the timer can flush.
+	wt := ccpubsub.WrapTopic(topic, bucket, ccpubsub.TopicOptions{
+		Options:       opts,
+		FlushInterval: 10 * time.Millisecond,
+	})
+	t.Cleanup(func() { _ = wt.Shutdown(ctx) })
+
+	require.NoError(t, wt.Send(ctx, &claimcheck.Message{Body: []byte("timed")}))
+
+	// The background timer should flush within receiveOne's 2s timeout.
+	require.Equal(t, []string{"timed"}, receiveOne(t, ctx, sub))
+}
