@@ -28,6 +28,7 @@ The high-level layer. Both wrappers adapt existing gocloud objects rather than
 implementing gocloud's driver interfaces.
 
 - **`WrapTopic`:** buffers `Send`s and offloads the buffered batch to one blob, publishing a single control message. Flushes on a `MaxMessages`/`MaxBytes`/`FlushInterval` threshold, on explicit `Flush`, or on `Shutdown`.
+- Conditional offload: `WrapTopic` publishes messages smaller than `Options.MinSize` inline (no blob); `MinSize=0` (default) always offloads. Send-side only; the core `Offload` always writes a blob.
 - **`WrapSubscription`:** adapts any `*pubsub.Subscription` into a claim-check `Subscription` whose `Receive` returns a `Batch`. Ack/Nack apply to the whole offloaded blob (the unit of delivery), not per message.
 - **`Batch`:** `Read`/`Open` the blob (or an inline message), `Ack`/`Nack` the whole unit, `Delete` the blob.
 - Blob retention: `SubscriptionOptions.AckDeletes` (or `Batch.AckAndDelete`) makes ack remove the blob; bucket lifecycle policies keyed on `KeyPrefix` are the backstop. The producer deletes its own blob if publish fails.
