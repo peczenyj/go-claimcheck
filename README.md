@@ -137,6 +137,10 @@ library's DEFLATE codec; the same shape works for any codec — for instance
 Brotli via [`github.com/andybalholm/brotli`](https://github.com/andybalholm/brotli)
 (a third-party package, not a dependency of this library).
 
+The same interface is also the right place for **encryption** — an AES-GCM or
+NaCl secretbox `Transformer` plugs in exactly like a compression codec.
+Encryption is not built in; it is bring-your-own via this interface.
+
 ```go
 import (
     "compress/flate"
