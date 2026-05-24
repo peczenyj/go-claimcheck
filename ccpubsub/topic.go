@@ -107,7 +107,7 @@ func (t *bufTopic) flushLocked(ctx context.Context) error {
 		return err
 	}
 	if err := t.topic.Send(ctx, &pubsub.Message{Metadata: cm.ToMetadata(t.opts.MetadataPrefix)}); err != nil {
-		return err
+		return errors.Join(err, claimcheck.Delete(ctx, t.bucket, cm))
 	}
 	t.buf = nil
 	t.bufBytes = 0

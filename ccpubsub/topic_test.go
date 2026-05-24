@@ -2,10 +2,13 @@ package ccpubsub_test
 
 import (
 	"context"
+	"errors"
+	"io"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"gocloud.dev/blob"
 	"gocloud.dev/blob/memblob"
 	"gocloud.dev/pubsub/mempubsub"
 
@@ -136,4 +139,51 @@ func TestWrapTopic_FlushInterval(t *testing.T) {
 
 	// The background timer should flush within receiveOne's 2s timeout.
 	require.Equal(t, []string{"timed"}, receiveOne(t, ctx, sub))
+}
+
+func countBlobs(t *testing.T, ctx context.Context, b *blob.Bucket) int {
+	t.Helper()
+	it := b.List(nil)
+	n := 0
+	for {
+		_, err := it.Next(ctx)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		require.NoError(t, err)
+		n++
+	}
+	return n
+}
+
+func TestWrapTopic_PublishFailureDeletesBlob(t *testing.T) {
+	ctx := context.Background()
+	bucket := memblob.OpenBucket(nil)
+	t.Cleanup(func() { _ = bucket.Close() })
+
+	topic := mempubsub.NewTopic()
+	require.NoError(t, topic.Shutdown(ctx)) // make Send fail after Offload writes the blob
+
+	cct := ccpubsub.WrapTopic(topic, bucket, ccpubsub.TopicOptions{})
+	require.NoError(t, cct.Send(ctx, &claimcheck.Message{Body: []byte("x")})) // buffered, no flush yet
+
+	err := cct.Flush(ctx)
+	require.Error(t, err) // publish failed
+
+	require.Equal(t, 0, countBlobs(t, ctx, bucket), "orphaned blob must be cleaned up")
+}
+
+func TestWrapTopic_SuccessfulFlushLeavesOneBlob(t *testing.T) {
+	ctx := context.Background()
+	bucket := memblob.OpenBucket(nil)
+	t.Cleanup(func() { _ = bucket.Close() })
+
+	topic := mempubsub.NewTopic()
+	t.Cleanup(func() { _ = topic.Shutdown(ctx) })
+
+	cct := ccpubsub.WrapTopic(topic, bucket, ccpubsub.TopicOptions{})
+	require.NoError(t, cct.Send(ctx, &claimcheck.Message{Body: []byte("x")}))
+	require.NoError(t, cct.Flush(ctx))
+
+	require.Equal(t, 1, countBlobs(t, ctx, bucket))
 }
