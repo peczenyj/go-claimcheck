@@ -155,13 +155,12 @@ func (d *verifyingDecoder) Decode(buf []*Message) (int, error) {
 	d.closer.msgCount += n
 	if err != nil && !d.checked {
 		d.checked = true
-		// On any terminal error (EOF or decode failure), verify the checksum
-		// first. A checksum mismatch is the more informative error.
-		if cerr := d.closer.verifyChecksum(); cerr != nil {
-			d.closer.readErr = cerr
-			return n, cerr
-		}
-		if !errors.Is(err, io.EOF) {
+		if errors.Is(err, io.EOF) {
+			if cerr := d.closer.verifyChecksum(); cerr != nil {
+				d.closer.readErr = cerr
+				return n, cerr
+			}
+		} else {
 			d.closer.readErr = err
 		}
 	}
