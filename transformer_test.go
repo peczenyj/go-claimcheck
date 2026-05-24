@@ -29,6 +29,25 @@ func TestGzipTransformer_RoundTrip(t *testing.T) {
 	require.Equal(t, "payload", string(got))
 }
 
+func TestZstdTransformer_RoundTrip(t *testing.T) {
+	tr := claimcheck.NewZstdTransformer()
+	require.Equal(t, "zstd", tr.ContentEncoding())
+
+	var buf bytes.Buffer
+	w, err := tr.WrapWriter(&buf)
+	require.NoError(t, err)
+	_, err = w.Write([]byte("payload"))
+	require.NoError(t, err)
+	require.NoError(t, w.Close())
+
+	r, err := tr.WrapReader(&buf)
+	require.NoError(t, err)
+	got, err := io.ReadAll(r)
+	require.NoError(t, err)
+	require.NoError(t, r.Close())
+	require.Equal(t, "payload", string(got))
+}
+
 func TestNoopTransformer_RoundTrip(t *testing.T) {
 	tr := claimcheck.NewNoopTransformer()
 	require.Empty(t, tr.ContentEncoding())

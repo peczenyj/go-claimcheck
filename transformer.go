@@ -3,6 +3,8 @@ package claimcheck
 import (
 	"compress/gzip"
 	"io"
+
+	"github.com/klauspost/compress/zstd"
 )
 
 // Transformer is middleware for the stored blob bytes (e.g. compression).
@@ -44,4 +46,24 @@ func (t *GzipTransformer) WrapWriter(w io.Writer) (io.WriteCloser, error) {
 
 func (t *GzipTransformer) WrapReader(r io.Reader) (io.ReadCloser, error) {
 	return gzip.NewReader(r)
+}
+
+// ZstdTransformer compresses the blob with zstd.
+type ZstdTransformer struct{}
+
+func NewZstdTransformer() *ZstdTransformer { return &ZstdTransformer{} }
+
+func (t *ZstdTransformer) ContentEncoding() string { return "zstd" }
+
+func (t *ZstdTransformer) WrapWriter(w io.Writer) (io.WriteCloser, error) {
+	return zstd.NewWriter(w)
+}
+
+func (t *ZstdTransformer) WrapReader(r io.Reader) (io.ReadCloser, error) {
+	decoder, err := zstd.NewReader(r)
+	if err != nil {
+		return nil, err
+	}
+
+	return decoder.IOReadCloser(), nil
 }
