@@ -121,6 +121,44 @@ err := topic.Send(ctx, &pubsub.Message{Body: []byte("large payload...")})
 
 The receiving side uses `WrapSubscription` (or `extpubsub.NewSubscription`) with the same bucket and options to transparently unroll offloaded messages.
 
+### 5. Core API — manual offload/read (`claimcheck` package)
+
+The root `claimcheck` package is the low-level foundation the wrappers build on.
+Use it directly when you manage the topic, subscription, and blob bucket
+yourself: offload a batch to a blob, send the returned control message's
+metadata over any transport, then read it back on the other side.
+
+```go
+import (
+    claimcheck "github.com/peczenyj/go-claimcheck"
+    "gocloud.dev/blob/memblob"
+)
+
+bucket := memblob.OpenBucket(nil)
+opts := claimcheck.Options{KeyPrefix: "claimcheck/"}
+
+// Producer: write the batch to a blob, get the control message.
+cm, err := claimcheck.Offload(ctx, bucket, opts,
+    []*claimcheck.Message{{Body: []byte("large payload...")}})
+metadata := cm.ToMetadata(opts.MetadataPrefix) // attach to your pubsub message
+
+// Consumer: parse the metadata you received, then read the blob back.
+if parsed, ok := claimcheck.ParseControlMessage(metadata, opts.MetadataPrefix); ok {
+    msgs, err := claimcheck.Read(ctx, bucket, parsed, opts)
+    // ... process msgs ...
+    _ = claimcheck.Delete(ctx, bucket, parsed) // optional cleanup
+}
+```
+
+`Options` supports `KeyPrefix`/`KeyFunc` (blob naming), `Serializer` (JSON Lines
+or length-prefixed), `Transformer` (gzip), `VerifyChecksum` (opt-in MD5), and
+`MaxMessageSize`/`MaxBatchSize` (decode safety caps). For bounded-memory reads,
+use `claimcheck.Open` to stream messages in chunks instead of `claimcheck.Read`.
+
+> **Note:** `claimcheck` is the low-level core of an in-progress API redesign.
+> The `extpubsub` wrappers above are being migrated onto it, so the high-level
+> API may change before v1.0.
+
 ## Development
 
 This project uses [Task](https://taskfile.dev/) to manage the development workflow.
