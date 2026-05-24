@@ -80,11 +80,29 @@ func (b *Batch) Delete(ctx context.Context) error {
 	return claimcheck.Delete(ctx, b.bucket, b.cm)
 }
 
-// Ack acknowledges the whole batch.
+// Ack acknowledges the whole batch. When the subscription was created with
+// AckDeletes, it acks first and then best-effort deletes the offloaded blob
+// (errors ignored; a bucket lifecycle policy is the backstop). The delete uses
+// context.Background() because Ack takes no context — the signature is left
+// unchanged to avoid a second breaking change; use AckAndDelete when you need
+// context or error control. Inline batches delete nothing.
 func (b *Batch) Ack() {
 	if b.ack != nil {
 		b.ack()
 	}
+	if b.ackDeletes {
+		_ = b.Delete(context.Background())
+	}
+}
+
+// AckAndDelete acknowledges the batch first and then deletes the offloaded blob,
+// returning any delete error. Use when you want explicit ctx/error control.
+// Delete is a no-op for an inline batch.
+func (b *Batch) AckAndDelete(ctx context.Context) error {
+	if b.ack != nil {
+		b.ack()
+	}
+	return b.Delete(ctx)
 }
 
 // Nack requests redelivery of the whole batch.
