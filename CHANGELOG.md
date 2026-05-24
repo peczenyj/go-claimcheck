@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [unreleased]
+
+### Bug Fixes
+
+- Delete orphaned blob when publish fails after offload
+
+### Documentation
+
+- Correct unimplemented MinSize and encryption claims
+- Document blob retention (ack-deletes + lifecycle policies)
+
+### Features
+
+- Stamp created_at into blob metadata when InjectBlobMetadata is set
+- WrapSubscription takes SubscriptionOptions (adds AckDeletes flag)
+- Add AckDeletes mode and Batch.AckAndDelete (ack then delete)
+
+### Testing
+
+- Add end-to-end produce-consume-ackdeletes round trip
+
 ## [0.2.0] - 2026-05-24
 
 ### Documentation
@@ -17,6 +38,7 @@ All notable changes to this project will be documented in this file.
 ### Miscellaneous Tasks
 
 - Update changelog
+- Release v0.2.0
 
 ## [0.1.0] - 2026-05-24
 
