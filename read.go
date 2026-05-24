@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"time"
 
 	"gocloud.dev/blob"
 )
@@ -24,10 +25,11 @@ var ErrChecksumMismatch = errors.New("claimcheck: blob checksum mismatch")
 // and (when enabled) MD5 verification are applied.
 func Open(ctx context.Context, bucket *blob.Bucket, cm ControlMessage, opts Options) (Decoder, io.Closer, error) {
 	opts.SetDefaults()
+	start := time.Now()
 
 	r, err := bucket.NewReader(ctx, cm.Key, nil)
 	if err != nil {
-		return nil, nil, fmt.Errorf("claimcheck: open blob: %w", err)
+		return nil, nil, fireReadErr(ctx, opts, cm, start, fmt.Errorf("claimcheck: open blob: %w", err))
 	}
 
 	var raw io.Reader = r
@@ -45,10 +47,13 @@ func Open(ctx context.Context, bucket *blob.Bucket, cm ControlMessage, opts Opti
 	tr, err := opts.Transformer.WrapReader(raw)
 	if err != nil {
 		_ = r.Close()
-		return nil, nil, fmt.Errorf("claimcheck: wrap reader: %w", err)
+		return nil, nil, fireReadErr(ctx, opts, cm, start, fmt.Errorf("claimcheck: wrap reader: %w", err))
 	}
 
-	closer := &openCloser{transformer: tr, blob: r, hasher: hasher, want: cm.Checksum, verify: verify}
+	closer := &openCloser{
+		transformer: tr, blob: r, hasher: hasher, want: cm.Checksum, verify: verify,
+		ctx: ctx, observer: opts.Observer, key: cm.Key, fileSize: cm.FileSize, start: start,
+	}
 	inner := opts.Serializer.NewDecoder(tr, opts.MaxMessageSize)
 	return &verifyingDecoder{Decoder: inner, closer: closer}, closer, nil
 }
@@ -75,15 +80,50 @@ func Read(ctx context.Context, bucket *blob.Bucket, cm ControlMessage, opts Opti
 	}
 }
 
+// fireReadErr emits a failed-read notification and returns err unchanged so it
+// can be used inline on Open's error returns.
+func fireReadErr(ctx context.Context, opts Options, cm ControlMessage, start time.Time, err error) error {
+	opts.Observer.ReadDone(ctx, ReadInfo{
+		Key:       cm.Key,
+		Bytes:     cm.FileSize,
+		StartTime: start,
+		Duration:  time.Since(start),
+		Err:       err,
+	})
+	return err
+}
+
 type openCloser struct {
 	transformer io.ReadCloser
 	blob        io.ReadCloser
 	hasher      hash.Hash
 	want        string
 	verify      bool
+
+	// observability — populated by Open; ReadDone fires once on Close.
+	ctx      context.Context
+	observer Observer
+	key      string
+	fileSize int64
+	start    time.Time
+	msgCount int
+	readErr  error
+	fired    bool
 }
 
 func (c *openCloser) Close() error {
+	if !c.fired {
+		c.fired = true
+		c.observer.ReadDone(c.ctx, ReadInfo{
+			Key:       c.key,
+			MsgCount:  c.msgCount,
+			Bytes:     c.fileSize,
+			Inline:    false,
+			StartTime: c.start,
+			Duration:  time.Since(c.start),
+			Err:       c.readErr,
+		})
+	}
 	err1 := c.transformer.Close()
 	err2 := c.blob.Close()
 	if err1 != nil {
@@ -112,12 +152,17 @@ type verifyingDecoder struct {
 
 func (d *verifyingDecoder) Decode(buf []*Message) (int, error) {
 	n, err := d.Decoder.Decode(buf)
+	d.closer.msgCount += n
 	if err != nil && !d.checked {
 		d.checked = true
 		// On any terminal error (EOF or decode failure), verify the checksum
 		// first. A checksum mismatch is the more informative error.
 		if cerr := d.closer.verifyChecksum(); cerr != nil {
+			d.closer.readErr = cerr
 			return n, cerr
+		}
+		if !errors.Is(err, io.EOF) {
+			d.closer.readErr = err
 		}
 	}
 	return n, err

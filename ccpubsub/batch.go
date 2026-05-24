@@ -3,6 +3,7 @@ package ccpubsub
 import (
 	"context"
 	"io"
+	"time"
 
 	"gocloud.dev/blob"
 
@@ -46,7 +47,16 @@ func (b *Batch) Offloaded() bool { return b.cm.Key != "" }
 // Read decodes all messages in the batch.
 func (b *Batch) Read(ctx context.Context) ([]*claimcheck.Message, error) {
 	if !b.Offloaded() {
-		return []*claimcheck.Message{{Body: b.inlineBody, Metadata: b.inlineMeta}}, nil
+		start := time.Now()
+		msgs := []*claimcheck.Message{{Body: b.inlineBody, Metadata: b.inlineMeta}}
+		b.opts.Observer.ReadDone(ctx, claimcheck.ReadInfo{
+			MsgCount:  1,
+			Bytes:     int64(len(b.inlineBody)),
+			Inline:    true,
+			StartTime: start,
+			Duration:  time.Since(start),
+		})
+		return msgs, nil
 	}
 	return claimcheck.Read(ctx, b.bucket, b.cm, b.opts)
 }
