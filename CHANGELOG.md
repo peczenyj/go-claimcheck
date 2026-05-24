@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [unreleased]
+
+### Documentation
+
+- Document conditional offload (MinSize) and correct its comment
+
+### Features
+
+- Send sub-MinSize messages inline instead of offloading
+
+### Testing
+
+- Strengthen MinSize=0 back-compat test with round-trip assertion
+
 ## [0.3.0] - 2026-05-24
 
 ### Bug Fixes
@@ -22,6 +36,7 @@ All notable changes to this project will be documented in this file.
 ### Miscellaneous Tasks
 
 - Update changelog
+- Release v0.3.0
 
 ### Testing
 
