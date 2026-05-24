@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [unreleased]
+
+### Documentation
+
+- Add tested slog Observer example
+- Document Observer and OpenTelemetry adapter pattern
+
+### Features
+
+- Add Observer hooks for offload and read
+- Fire ReadDone for inline ccpubsub batches
+
 ## [0.1.0] - 2026-05-24
 
 ### Documentation
@@ -35,6 +47,7 @@ All notable changes to this project will be documented in this file.
 - Update changelog
 - Update changelog
 - Update changelog
+- Release v0.1.0
 
 ### Refactor
 
