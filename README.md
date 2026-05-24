@@ -16,8 +16,8 @@ Powered by [Go CDK](https://gocloud.dev/) for total provider portability.
 
 ## Features
 
-- **Two layers, your choice:** a low-level **core** (`claimcheck`) for full control over offload/read, and **magic wrappers** (`ccpubsub`) that buffer, offload, and unroll for you.
-- **Blob-level delivery:** the consumer `Batch` Acks/Nacks a whole offloaded blob — the honest unit of delivery for this pattern.
+- **Two API layers:** a low-level **core** (`claimcheck`) for full control over offload and read, and a **Pub/Sub integration layer** (`ccpubsub`) that handles buffering, offloading, and unrolling automatically.
+- **Blob-level delivery:** the consumer `Batch` acknowledges or negatively-acknowledges a whole offloaded blob — the natural unit of delivery for this pattern.
 - **Pluggable Serialization:** built-in NDJSON (JSON Lines) and length-prefixed binary, both streaming for bounded-memory reads.
 - **Data Transformation:** built-in Gzip and Zstd compression middleware.
 - **Rich Metadata:** tracks checksum (MD5), file size, content type/encoding, and message count on every control message.
@@ -31,14 +31,14 @@ go get github.com/peczenyj/go-claimcheck
 
 ## Architecture
 
-The library is two layers. Pick the one that fits how much control you want;
-both speak the same on-blob format, so a producer on one layer interoperates
-with a consumer on the other.
+The library is organized in two layers. Choose the one that matches the level of
+control you need; both share the same on-blob format, so a producer using one
+layer interoperates with a consumer using the other.
 
 | Layer | Package | Send | Receive |
 | :--- | :--- | :--- | :--- |
-| **Core (DIY)** | `claimcheck` | `Offload` a batch to a blob, attach `ControlMessage` metadata to your own pubsub message | `ParseControlMessage`, then `Read` / `Open` the blob |
-| **Magic (wrappers)** | `ccpubsub` | `WrapTopic` buffers and offloads for you | `WrapSubscription` returns a `Batch` you `Read` and `Ack` |
+| **Core (low-level)** | `claimcheck` | `Offload` a batch to a blob, attach `ControlMessage` metadata to your own pubsub message | `ParseControlMessage`, then `Read` / `Open` the blob |
+| **Pub/Sub integration** | `ccpubsub` | `WrapTopic` buffers and offloads automatically | `WrapSubscription` returns a `Batch` to `Read` and `Ack` |
 
 The core never imports `gocloud.dev/pubsub`: it deals only in blobs and a
 metadata map, so the control message can ride any transport. The `ccpubsub`
@@ -46,17 +46,22 @@ wrappers adapt any gocloud `*pubsub.Topic` / `*pubsub.Subscription`.
 
 ## Quick Start
 
-### Magic wrappers (`ccpubsub`)
+The examples below build up from the simplest possible use to full manual
+control. Every snippet is mirrored by a runnable test in the package, so they
+compile and pass as written.
 
-The wrappers do the offloading and unrolling for you. The producer buffers
-messages and offloads a batch to one blob — flushed when a threshold is hit, on
-`Flush`, or on `Shutdown` — then publishes a single control message. The consumer
-receives that control message as a `Batch`, reads the blob back, and Acks the
-whole blob.
+### 1. Zero configuration
+
+Wrap a topic and subscription and start sending. With empty options you get the
+defaults — JSON Lines serialization, no compression, and the `claimcheck_`
+metadata prefix. The producer buffers messages and offloads them to one blob,
+publishing a single control message; the consumer receives that as a `Batch`,
+reads the blob back, and acknowledges the whole blob.
 
 ```go
 import (
     "context"
+    "log"
     "time"
 
     claimcheck "github.com/peczenyj/go-claimcheck"
@@ -70,70 +75,135 @@ bucket := memblob.OpenBucket(nil)
 baseTopic := mempubsub.NewTopic()
 baseSub := mempubsub.NewSubscription(baseTopic, time.Second)
 
-// Both sides MUST agree on the bucket, Serializer, Transformer, and
-// MetadataPrefix. (See "The bucket-binding contract" below.)
-opts := claimcheck.Options{Transformer: claimcheck.NewZstdTransformer()}
+topic := ccpubsub.WrapTopic(baseTopic, bucket, ccpubsub.TopicOptions{})
+sub := ccpubsub.WrapSubscription(baseSub, bucket, claimcheck.Options{})
 
-// Producer: buffer up to 100 messages per blob (or flush on Shutdown).
-topic := ccpubsub.WrapTopic(baseTopic, bucket, ccpubsub.TopicOptions{
-    Options:     opts,
-    MaxMessages: 100,
-})
-_ = topic.Send(ctx, &claimcheck.Message{Body: []byte("large payload...")})
-_ = topic.Shutdown(ctx) // flushes the buffered batch
-
-// Consumer: receive the batch, read every message, ack the whole blob.
-sub := ccpubsub.WrapSubscription(baseSub, bucket, opts)
-batch, err := sub.Receive(ctx)
-if err != nil { /* ... */ }
-
-msgs, err := batch.Read(ctx) // or batch.Open(ctx) to stream with bounded memory
-for _, m := range msgs {
-    // ... process m.Body ...
+if err := topic.Send(ctx, &claimcheck.Message{Body: []byte("hello")}); err != nil {
+    log.Fatal(err)
 }
-batch.Ack()              // acknowledges the whole blob
-_ = batch.Delete(ctx)    // optional: remove the blob once consumed
+if err := topic.Shutdown(ctx); err != nil { // flushes the buffered batch
+    log.Fatal(err)
+}
+
+batch, err := sub.Receive(ctx)
+if err != nil {
+    log.Fatal(err)
+}
+msgs, err := batch.Read(ctx) // or batch.Open(ctx) to stream with bounded memory
+if err != nil {
+    log.Fatal(err)
+}
+batch.Ack() // acknowledges the whole blob
 ```
 
-`WrapTopic` **always** offloads the buffered batch to a blob; the number of
-messages per blob is caller-controlled via `MaxMessages` / `MaxBytes` /
-`FlushInterval` and is otherwise unbounded. A `Batch` may also be *inline*
-(`batch.Offloaded() == false`) when a received message carries no control-message
-metadata — `Read` still returns it, and `Ack`/`Delete` behave sensibly.
+A `Batch` may also be *inline* (`batch.Offloaded() == false`) when a received
+message carries no control-message metadata — `Read` still returns the message,
+`Ack` acknowledges it, and `Delete` is a no-op (there is no blob to remove).
 
-### Core API — manual offload/read (`claimcheck`)
+### 2. Customizing the integration layer
 
-Use the core directly when you manage the topic, subscription, and bucket
-yourself: offload a batch to a blob, send the returned control message's metadata
-over any transport, then read it back on the other side.
+The same wrappers take options. Here we compress blobs with Zstd, namespace the
+blob keys, verify checksums on read, and control batching: flush after 100
+buffered messages or every two seconds, whichever comes first. `WrapTopic`
+**always** offloads the buffered batch — the number of messages per blob is
+caller-controlled via `MaxMessages` / `MaxBytes` / `FlushInterval` and is
+otherwise unbounded.
+
+```go
+// Producer and consumer share the same options
+// (see "The bucket-binding contract").
+opts := claimcheck.Options{
+    Transformer:    claimcheck.NewZstdTransformer(),
+    KeyPrefix:      "claimcheck/",
+    VerifyChecksum: true,
+}
+
+topic := ccpubsub.WrapTopic(baseTopic, bucket, ccpubsub.TopicOptions{
+    Options:       opts,
+    MaxMessages:   100,
+    FlushInterval: 2 * time.Second,
+})
+sub := ccpubsub.WrapSubscription(baseSub, bucket, opts)
+```
+
+`Options` also supports `KeyFunc` (custom blob naming), `Serializer` (JSON Lines
+or length-prefixed), and `MaxMessageSize` / `MaxBatchSize` (decode safety caps).
+
+### 3. Bring your own codec
+
+Compression and serialization are pluggable interfaces. To add a codec, satisfy
+the three-method `Transformer` interface. This example wraps the standard
+library's DEFLATE codec; the same shape works for any codec — for instance
+Brotli via [`github.com/andybalholm/brotli`](https://github.com/andybalholm/brotli)
+(a third-party package, not a dependency of this library).
 
 ```go
 import (
+    "compress/flate"
+    "io"
+
+    claimcheck "github.com/peczenyj/go-claimcheck"
+)
+
+type flateTransformer struct{}
+
+func (flateTransformer) ContentEncoding() string { return "deflate" }
+
+func (flateTransformer) WrapWriter(w io.Writer) (io.WriteCloser, error) {
+    return flate.NewWriter(w, flate.DefaultCompression)
+}
+
+func (flateTransformer) WrapReader(r io.Reader) (io.ReadCloser, error) {
+    return flate.NewReader(r), nil
+}
+
+// Use it like any built-in transformer:
+opts := claimcheck.Options{Transformer: flateTransformer{}}
+```
+
+### 4. Low-level core API (`claimcheck`)
+
+For full manual control, use the core directly: you manage the topic,
+subscription, and bucket yourself. `Offload` writes a batch to a blob and returns
+a `ControlMessage`; you send its metadata over any transport, then parse it and
+`Read` the blob back on the other side. The core never imports
+`gocloud.dev/pubsub`.
+
+```go
+import (
+    "context"
+    "log"
+
     claimcheck "github.com/peczenyj/go-claimcheck"
     "gocloud.dev/blob/memblob"
 )
 
+ctx := context.Background()
 bucket := memblob.OpenBucket(nil)
 opts := claimcheck.Options{KeyPrefix: "claimcheck/"}
 
 // Producer: write the batch to a blob, get the control message.
 cm, err := claimcheck.Offload(ctx, bucket, opts,
-    []*claimcheck.Message{{Body: []byte("large payload...")}})
+    []*claimcheck.Message{{Body: []byte("alpha")}, {Body: []byte("beta")}})
+if err != nil {
+    log.Fatal(err)
+}
 metadata := cm.ToMetadata(opts.MetadataPrefix) // attach to your pubsub message
 
 // Consumer: parse the metadata you received, then read the blob back.
-if parsed, ok := claimcheck.ParseControlMessage(metadata, opts.MetadataPrefix); ok {
-    msgs, err := claimcheck.Read(ctx, bucket, parsed, opts)
-    // ... process msgs ...
-    _ = claimcheck.Delete(ctx, bucket, parsed) // optional cleanup
+parsed, ok := claimcheck.ParseControlMessage(metadata, opts.MetadataPrefix)
+if !ok {
+    log.Fatal("not a claim-check message")
 }
+msgs, err := claimcheck.Read(ctx, bucket, parsed, opts)
+if err != nil {
+    log.Fatal(err)
+}
+_ = claimcheck.Delete(ctx, bucket, parsed) // optional cleanup
 ```
 
-`Options` supports `KeyPrefix`/`KeyFunc` (blob naming), `Serializer` (JSON Lines
-or length-prefixed), `Transformer` (Gzip or Zstd), `VerifyChecksum` (opt-in MD5),
-and `MaxMessageSize`/`MaxBatchSize` (decode safety caps). For bounded-memory
-reads, use `claimcheck.Open` to stream messages in chunks instead of
-`claimcheck.Read`.
+For bounded-memory reads, use `claimcheck.Open` to stream messages in chunks
+instead of `claimcheck.Read`.
 
 ## The bucket-binding contract
 
