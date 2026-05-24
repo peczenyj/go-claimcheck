@@ -23,7 +23,7 @@ func Example_zeroConfiguration() {
 	baseSub := mempubsub.NewSubscription(baseTopic, time.Second)
 
 	topic := ccpubsub.WrapTopic(baseTopic, bucket, ccpubsub.TopicOptions{})
-	sub := ccpubsub.WrapSubscription(baseSub, bucket, claimcheck.Options{})
+	sub := ccpubsub.WrapSubscription(baseSub, bucket, ccpubsub.SubscriptionOptions{})
 
 	if err := topic.Send(ctx, &claimcheck.Message{Body: []byte("hello")}); err != nil {
 		log.Fatal(err)
@@ -68,7 +68,7 @@ func Example_customizingTheIntegrationLayer() {
 		MaxMessages:   100,
 		FlushInterval: 2 * time.Second,
 	})
-	sub := ccpubsub.WrapSubscription(baseSub, bucket, opts)
+	sub := ccpubsub.WrapSubscription(baseSub, bucket, ccpubsub.SubscriptionOptions{Options: opts})
 
 	for _, body := range []string{"one", "two", "three"} {
 		if err := topic.Send(ctx, &claimcheck.Message{Body: []byte(body)}); err != nil {

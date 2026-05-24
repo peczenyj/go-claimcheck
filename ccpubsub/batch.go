@@ -21,6 +21,7 @@ type Batch struct {
 	opts       claimcheck.Options
 	ack        func()
 	nack       func()
+	ackDeletes bool
 }
 
 func newBatch(
@@ -30,10 +31,11 @@ func newBatch(
 	bucket *blob.Bucket,
 	opts claimcheck.Options,
 	ack, nack func(),
+	ackDeletes bool,
 ) *Batch {
 	return &Batch{
 		cm: cm, inlineBody: inlineBody, inlineMeta: inlineMeta,
-		bucket: bucket, opts: opts, ack: ack, nack: nack,
+		bucket: bucket, opts: opts, ack: ack, nack: nack, ackDeletes: ackDeletes,
 	}
 }
 

@@ -10,17 +10,28 @@ import (
 )
 
 type wrappedSub struct {
-	sub    *pubsub.Subscription
-	bucket *blob.Bucket
-	opts   claimcheck.Options
+	sub        *pubsub.Subscription
+	bucket     *blob.Bucket
+	opts       claimcheck.Options
+	ackDeletes bool
+}
+
+// SubscriptionOptions configures the claim-check receive wrapper. The embedded
+// claimcheck.Options controls metadata prefix, serialization, and verification.
+type SubscriptionOptions struct {
+	claimcheck.Options
+
+	// AckDeletes makes Batch.Ack also best-effort delete the offloaded blob
+	// (ack first, then delete). Inline batches delete nothing.
+	AckDeletes bool
 }
 
 // WrapSubscription adapts any gocloud *pubsub.Subscription into a claim-check
 // Subscription. It assumes the receiving side uses the same bucket and options
 // the producer offloaded with.
-func WrapSubscription(s *pubsub.Subscription, b *blob.Bucket, opts claimcheck.Options) Subscription {
+func WrapSubscription(s *pubsub.Subscription, b *blob.Bucket, opts SubscriptionOptions) Subscription {
 	opts.SetDefaults()
-	return &wrappedSub{sub: s, bucket: b, opts: opts}
+	return &wrappedSub{sub: s, bucket: b, opts: opts.Options, ackDeletes: opts.AckDeletes}
 }
 
 func (w *wrappedSub) Receive(ctx context.Context) (*Batch, error) {
@@ -29,7 +40,7 @@ func (w *wrappedSub) Receive(ctx context.Context) (*Batch, error) {
 		return nil, err
 	}
 	cm, _ := claimcheck.ParseControlMessage(m.Metadata, w.opts.MetadataPrefix)
-	return newBatch(cm, m.Body, m.Metadata, w.bucket, w.opts, m.Ack, m.Nack), nil
+	return newBatch(cm, m.Body, m.Metadata, w.bucket, w.opts, m.Ack, m.Nack, w.ackDeletes), nil
 }
 
 func (w *wrappedSub) Shutdown(ctx context.Context) error {

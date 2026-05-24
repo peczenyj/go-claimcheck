@@ -42,7 +42,7 @@ func TestWrapTopic_CountThresholdFlush(t *testing.T) {
 	topic := mempubsub.NewTopic()
 	gsub := mempubsub.NewSubscription(topic, time.Second)
 	t.Cleanup(func() { _ = topic.Shutdown(ctx); _ = gsub.Shutdown(ctx) })
-	sub := ccpubsub.WrapSubscription(gsub, bucket, opts)
+	sub := ccpubsub.WrapSubscription(gsub, bucket, ccpubsub.SubscriptionOptions{Options: opts})
 
 	wt := ccpubsub.WrapTopic(topic, bucket, ccpubsub.TopicOptions{Options: opts, MaxMessages: 2})
 	require.NoError(t, wt.Send(ctx, &claimcheck.Message{Body: []byte("a")}))
@@ -60,7 +60,7 @@ func TestWrapTopic_ByteThresholdFlush(t *testing.T) {
 	topic := mempubsub.NewTopic()
 	gsub := mempubsub.NewSubscription(topic, time.Second)
 	t.Cleanup(func() { _ = topic.Shutdown(ctx); _ = gsub.Shutdown(ctx) })
-	sub := ccpubsub.WrapSubscription(gsub, bucket, opts)
+	sub := ccpubsub.WrapSubscription(gsub, bucket, ccpubsub.SubscriptionOptions{Options: opts})
 
 	wt := ccpubsub.WrapTopic(topic, bucket, ccpubsub.TopicOptions{Options: opts, MaxBytes: 3})
 	require.NoError(t, wt.Send(ctx, &claimcheck.Message{Body: []byte("hello")})) // 5 >= 3 → flush
@@ -77,7 +77,7 @@ func TestWrapTopic_ManualFlush(t *testing.T) {
 	topic := mempubsub.NewTopic()
 	gsub := mempubsub.NewSubscription(topic, time.Second)
 	t.Cleanup(func() { _ = topic.Shutdown(ctx); _ = gsub.Shutdown(ctx) })
-	sub := ccpubsub.WrapSubscription(gsub, bucket, opts)
+	sub := ccpubsub.WrapSubscription(gsub, bucket, ccpubsub.SubscriptionOptions{Options: opts})
 
 	wt := ccpubsub.WrapTopic(topic, bucket, ccpubsub.TopicOptions{Options: opts})
 	require.NoError(t, wt.Send(ctx, &claimcheck.Message{Body: []byte("x")}))
@@ -95,7 +95,7 @@ func TestWrapTopic_ShutdownFlushes(t *testing.T) {
 	topic := mempubsub.NewTopic()
 	gsub := mempubsub.NewSubscription(topic, time.Second)
 	t.Cleanup(func() { _ = gsub.Shutdown(ctx) })
-	sub := ccpubsub.WrapSubscription(gsub, bucket, opts)
+	sub := ccpubsub.WrapSubscription(gsub, bucket, ccpubsub.SubscriptionOptions{Options: opts})
 
 	wt := ccpubsub.WrapTopic(topic, bucket, ccpubsub.TopicOptions{Options: opts})
 	require.NoError(t, wt.Send(ctx, &claimcheck.Message{Body: []byte("y")}))
@@ -126,7 +126,7 @@ func TestWrapTopic_FlushInterval(t *testing.T) {
 	topic := mempubsub.NewTopic()
 	gsub := mempubsub.NewSubscription(topic, time.Second)
 	t.Cleanup(func() { _ = topic.Shutdown(ctx); _ = gsub.Shutdown(ctx) })
-	sub := ccpubsub.WrapSubscription(gsub, bucket, opts)
+	sub := ccpubsub.WrapSubscription(gsub, bucket, ccpubsub.SubscriptionOptions{Options: opts})
 
 	// No count/byte threshold — only the timer can flush.
 	wt := ccpubsub.WrapTopic(topic, bucket, ccpubsub.TopicOptions{

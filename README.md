@@ -76,7 +76,7 @@ baseTopic := mempubsub.NewTopic()
 baseSub := mempubsub.NewSubscription(baseTopic, time.Second)
 
 topic := ccpubsub.WrapTopic(baseTopic, bucket, ccpubsub.TopicOptions{})
-sub := ccpubsub.WrapSubscription(baseSub, bucket, claimcheck.Options{})
+sub := ccpubsub.WrapSubscription(baseSub, bucket, ccpubsub.SubscriptionOptions{})
 
 if err := topic.Send(ctx, &claimcheck.Message{Body: []byte("hello")}); err != nil {
     log.Fatal(err)
@@ -123,7 +123,7 @@ topic := ccpubsub.WrapTopic(baseTopic, bucket, ccpubsub.TopicOptions{
     MaxMessages:   100,
     FlushInterval: 2 * time.Second,
 })
-sub := ccpubsub.WrapSubscription(baseSub, bucket, opts)
+sub := ccpubsub.WrapSubscription(baseSub, bucket, ccpubsub.SubscriptionOptions{Options: opts})
 ```
 
 `Options` also supports `KeyFunc` (custom blob naming), `Serializer` (JSON Lines

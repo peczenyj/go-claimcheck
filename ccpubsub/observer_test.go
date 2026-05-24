@@ -27,7 +27,7 @@ func TestInlineBatchReadFiresReadDone(t *testing.T) {
 	opts.SetDefaults()
 
 	// Inline batch: empty control message, body present.
-	b := newBatch(claimcheck.ControlMessage{}, []byte("hello"), nil, nil, opts, nil, nil)
+	b := newBatch(claimcheck.ControlMessage{}, []byte("hello"), nil, nil, opts, nil, nil, false)
 
 	msgs, err := b.Read(ctx)
 	if err != nil {

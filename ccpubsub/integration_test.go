@@ -132,7 +132,7 @@ func runRoundTrip(t *testing.T, topicURL, subURL, blobURL string, count int) {
 	// MaxMessages: 1 offloads every message to its own blob and publishes one
 	// control message per message, mirroring the per-message offload semantics.
 	ccTopic := ccpubsub.WrapTopic(topic, bucket, ccpubsub.TopicOptions{MaxMessages: 1})
-	ccSub := ccpubsub.WrapSubscription(sub, bucket, claimcheck.Options{})
+	ccSub := ccpubsub.WrapSubscription(sub, bucket, ccpubsub.SubscriptionOptions{})
 
 	publishMessages(t, ccTopic, count)
 	consumeMessages(t, ccSub, count)
