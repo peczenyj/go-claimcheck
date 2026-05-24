@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [unreleased]
+## [0.4.0] - 2026-05-24
 
 ### Documentation
 
@@ -11,6 +11,10 @@ All notable changes to this project will be documented in this file.
 ### Features
 
 - Send sub-MinSize messages inline instead of offloading
+
+### Miscellaneous Tasks
+
+- Update changelog
 
 ### Testing
 
