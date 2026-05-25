@@ -9,7 +9,7 @@
 [![CodeQL](https://github.com/peczenyj/go-claimcheck/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/peczenyj/go-claimcheck/actions/workflows/github-code-scanning/codeql)
 [![Dependency Review](https://github.com/peczenyj/go-claimcheck/actions/workflows/dependency-review.yml/badge.svg)](https://github.com/peczenyj/go-claimcheck/actions/workflows/dependency-review.yml)
 [![License](https://img.shields.io/github/license/peczenyj/go-claimcheck)](./LICENSE)
-[![SLSA Level 2](https://img.shields.io/badge/SLSA-Level_2-green)](https://slsa.dev)
+[![SLSA Level 2](https://img.shields.io/badge/SLSA-Level_2-green)](https://github.com/peczenyj/go-claimcheck/attestations)
 
 Cloud-agnostic Claim Check pattern for Go. Transparently offload large messages to blob storage (S3/GCS/Azure) while sending lightweight pointers via Pub/Sub (Kafka/RabbitMQ/SNS/SQS). 
 
