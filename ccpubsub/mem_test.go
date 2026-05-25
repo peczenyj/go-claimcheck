@@ -116,3 +116,18 @@ func TestMemSubscription_ShutdownThenReceive(t *testing.T) {
 	_, err := sub.Receive(context.Background())
 	require.ErrorIs(t, err, ccpubsub.ErrSubscriptionClosed)
 }
+
+// https://github.com/peczenyj/go-claimcheck/issues/52
+func TestMemSubscription_PushAfterShutdownNoPanic(t *testing.T) {
+	bucket := memblob.OpenBucket(nil)
+	t.Cleanup(func() { _ = bucket.Close() })
+	sub := ccpubsub.NewMemSubscription(bucket, claimcheck.Options{}, 1)
+	require.NoError(t, sub.Shutdown(context.Background()))
+
+	require.NotPanics(t, func() {
+		sub.Push(map[string]string{"k": "v"}, []byte("late"))
+	}, "Push after Shutdown must not panic")
+
+	_, err := sub.Receive(context.Background())
+	require.ErrorIs(t, err, ccpubsub.ErrSubscriptionClosed)
+}
