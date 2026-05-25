@@ -29,3 +29,15 @@ func TestOptions_SetDefaults_PreservesExplicit(t *testing.T) {
 	require.Equal(t, "x_", o.MetadataPrefix)
 	require.Equal(t, "p/", o.KeyPrefix)
 }
+
+func TestOptions_MaxDownloadSizeFallback(t *testing.T) {
+	// Fallback from deprecated MaxBatchSize
+	o := claimcheck.Options{MaxBatchSize: 123}
+	o.SetDefaults()
+	require.Equal(t, 123, o.MaxDownloadSize)
+
+	// Explicit MaxDownloadSize wins
+	o = claimcheck.Options{MaxDownloadSize: 456, MaxBatchSize: 123}
+	o.SetDefaults()
+	require.Equal(t, 456, o.MaxDownloadSize)
+}
