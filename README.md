@@ -106,8 +106,12 @@ The same wrappers take options. Here we compress blobs with Zstd, namespace the
 blob keys, verify checksums on read, and control batching: flush after 100
 buffered messages or every two seconds, whichever comes first. `WrapTopic`
 **always** offloads the buffered batch — the number of messages per blob is
-caller-controlled via `MaxMessages` / `MaxBytes` / `FlushInterval` and is
-otherwise unbounded.
+caller-controlled via `MaxMessages` / `MaxBytes` / `FlushInterval`. If you set
+**none** of them the batch is only published on an explicit `Flush`/`Shutdown`,
+so the buffer is bounded by `DefaultMaxBytes` (1 MiB) to prevent unbounded
+growth; set at least one trigger for predictable flushing. `FlushTimeout`
+bounds how long a single periodic flush may take (0 = run to completion, and
+independent of `FlushInterval`).
 
 ```go
 // Producer and consumer share the same options
