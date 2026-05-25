@@ -47,7 +47,7 @@ func (f faultyTransformer) WrapWriter(w io.Writer) (io.WriteCloser, error) {
 type faultyWriteCloser struct{ io.Writer }
 
 func (f faultyWriteCloser) Write(p []byte) (int, error) { return 0, errors.New("write error") }
-func (f faultyWriteCloser) Close() error               { return errors.New("close error") }
+func (f faultyWriteCloser) Close() error                { return errors.New("close error") }
 
 func TestOffload_Errors(t *testing.T) {
 	ctx := context.Background()
@@ -64,7 +64,7 @@ func TestOffload_Errors(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "wrap error")
 
-	// 3. Writer Close error (can't easily trigger bucket.NewWriter Close error with memblob, 
+	// 3. Writer Close error (can't easily trigger bucket.NewWriter Close error with memblob,
 	// but we can trigger transformer Close error with faultyTransformer if Encode succeeded but Close failed)
 	_, err = claimcheck.Offload(ctx, bucket, claimcheck.Options{Transformer: &closeFaultyTransformer{}}, []*claimcheck.Message{{Body: []byte("x")}})
 	require.Error(t, err)
