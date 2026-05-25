@@ -39,7 +39,10 @@ func (w *wrappedSub) Receive(ctx context.Context) (*Batch, error) {
 	if err != nil {
 		return nil, err
 	}
-	cm, _ := claimcheck.ParseControlMessage(m.Metadata, w.opts.MetadataPrefix)
+	cm, ok := claimcheck.ParseControlMessage(m.Metadata, w.opts.MetadataPrefix)
+	if !ok && claimcheck.HasControlMessageMetadata(m.Metadata, w.opts.MetadataPrefix) {
+		return nil, ErrCorruptControlMessage
+	}
 	return newBatch(cm, m.Body, m.Metadata, w.bucket, w.opts, m.Ack, m.Nack, w.ackDeletes), nil
 }
 

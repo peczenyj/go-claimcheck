@@ -63,6 +63,56 @@ func TestWrapSubscription_InlinePassthrough(t *testing.T) {
 	batch.Ack()
 }
 
+// https://github.com/peczenyj/go-claimcheck/issues/48
+func TestWrapSubscription_CorruptControlMessage(t *testing.T) {
+	ctx := context.Background()
+	bucket := memblob.OpenBucket(nil)
+	t.Cleanup(func() { _ = bucket.Close() })
+
+	topic := mempubsub.NewTopic()
+	gsub := mempubsub.NewSubscription(topic, time.Second)
+	t.Cleanup(func() { _ = topic.Shutdown(ctx); _ = gsub.Shutdown(ctx) })
+
+	// Envelope present under the expected prefix but msg_count is unparseable:
+	// must surface an error, not be silently delivered as an empty inline batch.
+	require.NoError(t, topic.Send(ctx, &pubsub.Message{Metadata: map[string]string{
+		"cc_v":         claimcheck.Version,
+		"cc_key":       "claimcheck/missing",
+		"cc_msg_count": "not-a-number",
+		"cc_file_size": "10",
+	}}))
+
+	sub := ccpubsub.WrapSubscription(gsub, bucket, ccpubsub.SubscriptionOptions{
+		Options: claimcheck.Options{MetadataPrefix: "cc_"},
+	})
+	_, err := sub.Receive(ctx)
+	require.ErrorIs(t, err, ccpubsub.ErrCorruptControlMessage)
+}
+
+// https://github.com/peczenyj/go-claimcheck/issues/55
+func TestWrapSubscription_UnsupportedVersion(t *testing.T) {
+	ctx := context.Background()
+	bucket := memblob.OpenBucket(nil)
+	t.Cleanup(func() { _ = bucket.Close() })
+
+	topic := mempubsub.NewTopic()
+	gsub := mempubsub.NewSubscription(topic, time.Second)
+	t.Cleanup(func() { _ = topic.Shutdown(ctx); _ = gsub.Shutdown(ctx) })
+
+	// Well-formed envelope but from an unsupported future version.
+	md := claimcheck.ControlMessage{
+		Version: "999", Key: "claimcheck/x", MessageCount: 1,
+		ContentType: "application/x-ndjson", FileSize: 10,
+	}.ToMetadata("cc_")
+	require.NoError(t, topic.Send(ctx, &pubsub.Message{Metadata: md}))
+
+	sub := ccpubsub.WrapSubscription(gsub, bucket, ccpubsub.SubscriptionOptions{
+		Options: claimcheck.Options{MetadataPrefix: "cc_"},
+	})
+	_, err := sub.Receive(ctx)
+	require.ErrorIs(t, err, ccpubsub.ErrCorruptControlMessage)
+}
+
 func TestWrapSubscription_CoverageGaps(t *testing.T) {
 	ctx := context.Background()
 	bucket := memblob.OpenBucket(nil)

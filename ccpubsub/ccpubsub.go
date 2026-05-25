@@ -12,6 +12,13 @@ import (
 // ErrSubscriptionClosed is returned by Receive after the subscription is shut down.
 var ErrSubscriptionClosed = errors.New("ccpubsub: subscription closed")
 
+// ErrCorruptControlMessage is returned by Receive when a message carries a
+// claim-check envelope under the configured prefix that is present but cannot be
+// parsed — a malformed field or an unsupported envelope version. The message is
+// left unacknowledged so the broker can redeliver or dead-letter it; it is not
+// silently delivered as an (empty) inline batch.
+var ErrCorruptControlMessage = errors.New("ccpubsub: corrupt or unsupported control message")
+
 // ErrInlineBatch is returned by Batch.Open when the batch is an inline
 // (non-offloaded) message and therefore has no blob to stream.
 //
