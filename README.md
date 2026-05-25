@@ -9,7 +9,7 @@
 [![CodeQL](https://github.com/peczenyj/go-claimcheck/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/peczenyj/go-claimcheck/actions/workflows/github-code-scanning/codeql)
 [![Dependency Review](https://github.com/peczenyj/go-claimcheck/actions/workflows/dependency-review.yml/badge.svg)](https://github.com/peczenyj/go-claimcheck/actions/workflows/dependency-review.yml)
 [![License](https://img.shields.io/github/license/peczenyj/go-claimcheck)](./LICENSE)
-[![SLSA Level 1](https://img.shields.io/badge/SLSA-Level_1-green)](https://slsa.dev)
+[![SLSA Level 2](https://img.shields.io/badge/SLSA-Level_2-green)](https://slsa.dev)
 
 Cloud-agnostic Claim Check pattern for Go. Transparently offload large messages to blob storage (S3/GCS/Azure) while sending lightweight pointers via Pub/Sub (Kafka/RabbitMQ/SNS/SQS). 
 
@@ -389,10 +389,13 @@ returning the error.
 
 ## Supply chain security
 
-Every tagged release meets [SLSA](https://slsa.dev) **Build Level 1**: the release
-workflow builds a source archive (`go-claimcheck-<version>.tar.gz`) and a
-`SHA256SUMS` file, then generates a signed build-provenance attestation for them
-using GitHub's [artifact attestations](https://docs.github.com/actions/security-guides/using-artifact-attestations-to-establish-provenance-for-builds).
+Every tagged release meets [SLSA](https://slsa.dev) **Build Level 2**: the release
+workflow runs on a GitHub-hosted runner and builds a source archive
+(`go-claimcheck-<version>.tar.gz`) and a `SHA256SUMS` file, then generates a
+Sigstore-signed build-provenance attestation over them using GitHub's
+[artifact attestations](https://docs.github.com/actions/security-guides/using-artifact-attestations-to-establish-provenance-for-builds).
+Because the provenance is produced and signed by the hosted build platform, it is
+authentic and tamper-evident — meeting SLSA Build Level 2 by default.
 
 Verify a downloaded release artifact against its provenance with the GitHub CLI:
 

@@ -14,9 +14,12 @@ permissions:
 jobs:
   release:
     name: Publish GitHub Release
+    # A GitHub-hosted runner is required: it is the trusted, hosted build
+    # platform that signs the provenance, which is what makes this SLSA Build
+    # Level 2. Do not move this job to a self-hosted runner.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
 
@@ -31,14 +34,14 @@ jobs:
           echo "ARCHIVE=${archive}" >> "${GITHUB_ENV}"
 
       - name: Generate SLSA build provenance
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
         with:
           subject-path: |
             ${{ env.ARCHIVE }}
             SHA256SUMS
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}

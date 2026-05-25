@@ -8,6 +8,7 @@ All security vulnerabilities will be promptly addressed. We request that you do 
 
 ## Build Provenance
 
-Tagged releases meet [SLSA](https://slsa.dev) Build Level 1. Each release ships a
-source archive and `SHA256SUMS` with a signed build-provenance attestation,
-verifiable with `gh attestation verify <artifact> --repo peczenyj/go-claimcheck`.
+Tagged releases meet [SLSA](https://slsa.dev) Build Level 2: the release runs on a
+GitHub-hosted runner and each release ships a source archive and `SHA256SUMS` with
+a Sigstore-signed build-provenance attestation, verifiable with
+`gh attestation verify <artifact> --repo peczenyj/go-claimcheck`.
