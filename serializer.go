@@ -1,6 +1,7 @@
 package claimcheck
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -93,11 +94,16 @@ func NewLengthPrefixedSerializer() *LengthPrefixedSerializer { return &LengthPre
 func (s *LengthPrefixedSerializer) ContentType() string { return "application/octet-stream" }
 
 func (s *LengthPrefixedSerializer) Encode(w io.Writer, msgs []*Message) error {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
 	for _, m := range msgs {
-		data, err := json.Marshal(m)
-		if err != nil {
+		buf.Reset()
+		if err := enc.Encode(m); err != nil {
 			return err
 		}
+		data := buf.Bytes()
+		// enc.Encode adds a newline, which we keep as part of the JSON payload
+		// for consistency with JSONLinesSerializer, but we must check the cap.
 		if uint64(len(data)) > math.MaxUint32 {
 			return ErrMessageTooLarge
 		}

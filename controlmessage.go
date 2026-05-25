@@ -42,11 +42,23 @@ func (c ControlMessage) ToMetadata(prefix string) map[string]string {
 	}
 }
 
+// HasControlMessageMetadata reports whether md carries a claim-check envelope
+// under prefix — that is, whether the version field is present and non-empty —
+// regardless of whether the rest of the envelope is well-formed. Use it together
+// with ParseControlMessage to distinguish a genuine inline message (no envelope)
+// from a corrupt or unsupported envelope (present but not parseable).
+func HasControlMessageMetadata(md map[string]string, prefix string) bool {
+	return md[prefix+fieldVersion] != ""
+}
+
 // ParseControlMessage extracts a ControlMessage from md using prefix. The bool
-// is false when md carries no claim-check envelope (version field absent).
+// is false when md carries no claim-check envelope (version field absent), when
+// the version is not the supported Version, or when a numeric field is malformed.
+// Use HasControlMessageMetadata to tell "no envelope" apart from "present but
+// invalid".
 func ParseControlMessage(md map[string]string, prefix string) (ControlMessage, bool) {
 	v, ok := md[prefix+fieldVersion]
-	if !ok || v == "" {
+	if !ok || v != Version {
 		return ControlMessage{}, false
 	}
 	count, err := strconv.Atoi(md[prefix+fieldMessageCount])

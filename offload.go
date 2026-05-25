@@ -2,7 +2,10 @@ package claimcheck
 
 import (
 	"context"
+	"crypto/md5"
 	"fmt"
+	"hash"
+	"io"
 	"strconv"
 	"time"
 
@@ -44,29 +47,31 @@ func Offload(ctx context.Context, bucket *blob.Bucket, opts Options, msgs []*Mes
 		return ControlMessage{}, fmt.Errorf("claimcheck: create blob writer: %w", err)
 	}
 
-	tw, err := opts.Transformer.WrapWriter(w)
+	// Track size and MD5 locally to avoid a redundant Attributes network call.
+	twrapper := &trackingWriter{w: w, h: md5.New()}
+
+	tw, err := opts.Transformer.WrapWriter(twrapper)
 	if err != nil {
 		_ = w.Close()
+		_ = bucket.Delete(ctx, key)
 		return ControlMessage{}, fmt.Errorf("claimcheck: wrap writer: %w", err)
 	}
 
 	if err := opts.Serializer.Encode(tw, msgs); err != nil {
 		_ = tw.Close()
 		_ = w.Close()
+		_ = bucket.Delete(ctx, key)
 		return ControlMessage{}, fmt.Errorf("claimcheck: encode messages: %w", err)
 	}
 
 	if err := tw.Close(); err != nil {
 		_ = w.Close()
+		_ = bucket.Delete(ctx, key)
 		return ControlMessage{}, fmt.Errorf("claimcheck: close transformer: %w", err)
 	}
 	if err := w.Close(); err != nil {
+		_ = bucket.Delete(ctx, key)
 		return ControlMessage{}, fmt.Errorf("claimcheck: close blob writer: %w", err)
-	}
-
-	attr, err := bucket.Attributes(ctx, key)
-	if err != nil {
-		return ControlMessage{}, fmt.Errorf("claimcheck: blob attributes: %w", err)
 	}
 
 	return ControlMessage{
@@ -75,7 +80,22 @@ func Offload(ctx context.Context, bucket *blob.Bucket, opts Options, msgs []*Mes
 		MessageCount:    len(msgs),
 		ContentType:     opts.Serializer.ContentType(),
 		ContentEncoding: opts.Transformer.ContentEncoding(),
-		FileSize:        attr.Size,
-		Checksum:        fmt.Sprintf("%x", attr.MD5),
+		FileSize:        twrapper.n,
+		Checksum:        fmt.Sprintf("%x", twrapper.h.Sum(nil)),
 	}, nil
+}
+
+type trackingWriter struct {
+	w io.Writer
+	h hash.Hash
+	n int64
+}
+
+func (t *trackingWriter) Write(p []byte) (int, error) {
+	n, err := t.w.Write(p)
+	if n > 0 {
+		_, _ = t.h.Write(p[:n])
+		t.n += int64(n)
+	}
+	return n, err
 }

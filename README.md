@@ -9,6 +9,7 @@
 [![CodeQL](https://github.com/peczenyj/go-claimcheck/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/peczenyj/go-claimcheck/actions/workflows/github-code-scanning/codeql)
 [![Dependency Review](https://github.com/peczenyj/go-claimcheck/actions/workflows/dependency-review.yml/badge.svg)](https://github.com/peczenyj/go-claimcheck/actions/workflows/dependency-review.yml)
 [![License](https://img.shields.io/github/license/peczenyj/go-claimcheck)](./LICENSE)
+[![SLSA Level 1](https://img.shields.io/badge/SLSA-Level_1-green)](https://slsa.dev)
 
 Cloud-agnostic Claim Check pattern for Go. Transparently offload large messages to blob storage (S3/GCS/Azure) while sending lightweight pointers via Pub/Sub (Kafka/RabbitMQ/SNS/SQS). 
 
@@ -20,7 +21,7 @@ Powered by [Go CDK](https://gocloud.dev/) for total provider portability.
 - **Blob-level delivery:** the consumer `Batch` acknowledges or negatively-acknowledges a whole offloaded blob — the natural unit of delivery for this pattern.
 - **Pluggable Serialization:** built-in NDJSON (JSON Lines) and length-prefixed binary, both streaming for bounded-memory reads.
 - **Data Transformation:** built-in Gzip and Zstd compression middleware.
-- **Rich Metadata:** tracks checksum (MD5), file size, content type/encoding, and message count on every control message.
+- **Rich Metadata:** tracks file size, content type/encoding, and message count on every control message, plus a best-effort MD5 checksum. The checksum is backend-dependent — some stores do not expose an object MD5 (e.g. S3 multipart uploads, GCS composite objects, Azure without Content-MD5); when it is absent, `VerifyChecksum` fails closed with `ErrChecksumUnavailable` rather than reading unverified.
 - **Provider Agnostic:** works with any Pub/Sub and Blob storage supported by [Go CDK](https://gocloud.dev/).
 
 ## Installation
@@ -106,8 +107,12 @@ The same wrappers take options. Here we compress blobs with Zstd, namespace the
 blob keys, verify checksums on read, and control batching: flush after 100
 buffered messages or every two seconds, whichever comes first. `WrapTopic`
 **always** offloads the buffered batch — the number of messages per blob is
-caller-controlled via `MaxMessages` / `MaxBytes` / `FlushInterval` and is
-otherwise unbounded.
+caller-controlled via `MaxMessages` / `MaxBytes` / `FlushInterval`. If you set
+**none** of them the batch is only published on an explicit `Flush`/`Shutdown`,
+so the buffer is bounded by `DefaultMaxBytes` (1 MiB) to prevent unbounded
+growth; set at least one trigger for predictable flushing. `FlushTimeout`
+bounds how long a single periodic flush may take (0 = run to completion, and
+independent of `FlushInterval`).
 
 ```go
 // Producer and consumer share the same options
@@ -372,6 +377,28 @@ GCS:
 The producer also self-cleans: if publishing the control message fails after the
 blob is written, the buffering `WrapTopic` deletes the orphaned blob before
 returning the error.
+
+## Known limitations
+
+- **Producer I/O is serialized.** `WrapTopic` performs the blob write and the
+  control-message publish while holding its internal lock, so concurrent `Send`
+  calls block for the duration of a flush. This bounds producer throughput under
+  heavy concurrency; see
+  [#53](https://github.com/peczenyj/go-claimcheck/issues/53). If you need higher
+  concurrency today, run multiple `WrapTopic` instances or shard producers.
+
+## Supply chain security
+
+Every tagged release meets [SLSA](https://slsa.dev) **Build Level 1**: the release
+workflow builds a source archive (`go-claimcheck-<version>.tar.gz`) and a
+`SHA256SUMS` file, then generates a signed build-provenance attestation for them
+using GitHub's [artifact attestations](https://docs.github.com/actions/security-guides/using-artifact-attestations-to-establish-provenance-for-builds).
+
+Verify a downloaded release artifact against its provenance with the GitHub CLI:
+
+```bash
+gh attestation verify go-claimcheck-0.6.0.tar.gz --repo peczenyj/go-claimcheck
+```
 
 ## Development
 
