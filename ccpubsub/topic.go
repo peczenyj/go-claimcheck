@@ -15,6 +15,12 @@ import (
 // ErrTopicClosed is returned by Send after the topic is shut down.
 var ErrTopicClosed = errors.New("ccpubsub: topic closed")
 
+// DefaultMaxBytes bounds the buffered-message bytes when a WrapTopic is created
+// with no flush trigger at all (MaxMessages, MaxBytes, and FlushInterval all
+// zero). It exists so a zero-config producer cannot buffer without limit; once
+// buffered bodies reach it, the batch is flushed.
+const DefaultMaxBytes = 1 << 20 // 1 MiB
+
 // Topic is the claim-check producer contract. Send buffers messages; a buffered
 // batch is offloaded to one blob and published as a single control message when
 // a threshold is reached, on Flush, or on Shutdown.
@@ -29,6 +35,10 @@ type Topic interface {
 
 // TopicOptions configures the buffering send wrapper. The embedded
 // claimcheck.Options controls serialization, blob naming, and metadata prefix.
+//
+// If none of MaxMessages, MaxBytes, or FlushInterval is set, the buffer is
+// flushed only on an explicit Flush/Shutdown and is capped at DefaultMaxBytes
+// so it cannot grow without limit.
 type TopicOptions struct {
 	claimcheck.Options
 
@@ -38,6 +48,10 @@ type TopicOptions struct {
 	MaxBytes int
 	// FlushInterval periodically flushes a non-empty buffer (0 = off).
 	FlushInterval time.Duration
+	// FlushTimeout bounds how long a single periodic (FlushInterval) flush may
+	// take, via a context deadline. 0 (the default) means no deadline: the
+	// periodic flush runs to completion. It is independent of FlushInterval.
+	FlushTimeout time.Duration
 }
 
 type bufTopic struct {
@@ -46,6 +60,8 @@ type bufTopic struct {
 	opts        claimcheck.Options
 	maxMessages int
 	maxBytes    int
+
+	flushTimeout time.Duration
 
 	mu       sync.Mutex
 	buf      []*claimcheck.Message
@@ -60,12 +76,19 @@ type bufTopic struct {
 func WrapTopic(t *pubsub.Topic, b *blob.Bucket, topts TopicOptions) Topic {
 	opts := topts.Options
 	opts.SetDefaults()
+	maxMessages, maxBytes := topts.MaxMessages, topts.MaxBytes
+	// With no flush trigger configured at all, bound the buffer so a zero-config
+	// producer cannot grow it without limit.
+	if maxMessages == 0 && maxBytes == 0 && topts.FlushInterval == 0 {
+		maxBytes = DefaultMaxBytes
+	}
 	bt := &bufTopic{
-		topic:       t,
-		bucket:      b,
-		opts:        opts,
-		maxMessages: topts.MaxMessages,
-		maxBytes:    topts.MaxBytes,
+		topic:        t,
+		bucket:       b,
+		opts:         opts,
+		maxMessages:  maxMessages,
+		maxBytes:     maxBytes,
+		flushTimeout: topts.FlushTimeout,
 	}
 	if topts.FlushInterval > 0 {
 		bt.stop = make(chan struct{})
@@ -125,6 +148,16 @@ func (t *bufTopic) flushLocked(ctx context.Context) error {
 	return nil
 }
 
+// flushContext returns the context for a periodic flush. It is bounded by
+// FlushTimeout when set, and otherwise has no deadline — the cadence
+// (FlushInterval) must not double as the flush timeout.
+func (t *bufTopic) flushContext() (context.Context, context.CancelFunc) {
+	if t.flushTimeout > 0 {
+		return context.WithTimeout(context.Background(), t.flushTimeout)
+	}
+	return context.Background(), func() {}
+}
+
 func (t *bufTopic) flushLoop(interval time.Duration) {
 	defer t.wg.Done()
 	ticker := time.NewTicker(interval)
@@ -135,7 +168,7 @@ func (t *bufTopic) flushLoop(interval time.Duration) {
 			return
 		case <-ticker.C:
 			t.mu.Lock()
-			ctx, cancel := context.WithTimeout(context.Background(), interval)
+			ctx, cancel := t.flushContext()
 			_ = t.flushLocked(ctx)
 			cancel()
 			t.mu.Unlock()
