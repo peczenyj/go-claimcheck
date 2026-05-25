@@ -22,6 +22,7 @@ type Batch struct {
 	ack        func()
 	nack       func()
 	ackDeletes bool
+	ackContext context.Context
 }
 
 func newBatch(
@@ -32,10 +33,11 @@ func newBatch(
 	opts claimcheck.Options,
 	ack, nack func(),
 	ackDeletes bool,
+	ackContext context.Context,
 ) *Batch {
 	return &Batch{
 		cm: cm, inlineBody: inlineBody, inlineMeta: inlineMeta,
-		bucket: bucket, opts: opts, ack: ack, nack: nack, ackDeletes: ackDeletes,
+		bucket: bucket, opts: opts, ack: ack, nack: nack, ackDeletes: ackDeletes, ackContext: ackContext,
 	}
 }
 
@@ -129,15 +131,17 @@ func (b *Batch) Delete(ctx context.Context) error {
 // Ack acknowledges the whole batch. When the subscription was created with
 // AckDeletes, it acks first and then best-effort deletes the offloaded blob
 // (errors ignored; a bucket lifecycle policy is the backstop). The delete uses
-// context.Background() because Ack takes no context — the signature is left
-// unchanged to avoid a second breaking change; use AckAndDelete when you need
-// context or error control. Inline batches delete nothing.
+// the configured AckContext, or context.Background() if nil. Inline batches delete nothing.
 func (b *Batch) Ack() {
 	if b.ack != nil {
 		b.ack()
 	}
 	if b.ackDeletes {
-		_ = b.Delete(context.Background())
+		ctx := b.ackContext
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		_ = b.Delete(ctx)
 	}
 }
 
