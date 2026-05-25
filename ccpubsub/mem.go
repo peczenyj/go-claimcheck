@@ -47,7 +47,10 @@ func (m *MemSubscription) Receive(ctx context.Context) (*Batch, error) {
 		if !ok {
 			return nil, ErrSubscriptionClosed
 		}
-		cm, _ := claimcheck.ParseControlMessage(it.metadata, m.opts.MetadataPrefix)
+		cm, ok := claimcheck.ParseControlMessage(it.metadata, m.opts.MetadataPrefix)
+		if !ok && claimcheck.HasControlMessageMetadata(it.metadata, m.opts.MetadataPrefix) {
+			return nil, ErrCorruptControlMessage
+		}
 		return newBatch(cm, it.body, it.metadata, m.bucket, m.opts, func() {}, func() {}, false), nil
 	}
 }
