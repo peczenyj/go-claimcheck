@@ -306,7 +306,7 @@ makes the consumer ignore the pointer and hand back the raw control message as a
 inline `Batch`; a wrong bucket makes `Read` fail to open the blob; a mismatched
 serializer or transformer surfaces as a decode error (or, with
 `VerifyChecksum`, an `ErrChecksumMismatch`). Treat the bucket + options as a
-shared contract you deploy to both sides together.
+shared contract you deploy to both sides together. *(Tip: If `InjectBlobMetadata` is used, the consumer can optionally use `bucket.Attributes()` to validate the content-type and encoding before reading, though this incurs an extra network round-trip.)*
 
 ## Delivery semantics
 

@@ -25,9 +25,14 @@ type Options struct {
 	// VerifyChecksum, if true, verifies the blob MD5 against the control
 	// message on read (when a hex MD5 is present).
 	VerifyChecksum bool
+	// AllowMissingChecksum, if true, allows reads to proceed without verification
+	// when VerifyChecksum is true but the blob backend does not provide an MD5.
+	AllowMissingChecksum bool
 	// MaxMessageSize caps a single decoded message's bytes (0 = unlimited).
 	MaxMessageSize int
-	// MaxBatchSize caps total stored bytes read from a blob (0 = unlimited).
+	// MaxDownloadSize caps total stored bytes read from a blob (0 = unlimited).
+	MaxDownloadSize int
+	// MaxBatchSize is deprecated; use MaxDownloadSize instead.
 	MaxBatchSize int
 	// Observer receives offload/read notifications. Defaults to NopObserver.
 	Observer Observer
@@ -49,5 +54,8 @@ func (o *Options) SetDefaults() {
 	}
 	if o.Observer == nil {
 		o.Observer = NopObserver{}
+	}
+	if o.MaxDownloadSize == 0 && o.MaxBatchSize > 0 {
+		o.MaxDownloadSize = o.MaxBatchSize
 	}
 }
