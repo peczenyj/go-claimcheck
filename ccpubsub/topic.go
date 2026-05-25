@@ -68,6 +68,8 @@ type bufTopic struct {
 	bufBytes int
 	closed   bool
 
+	flushMu sync.Mutex
+
 	stop chan struct{}
 	wg   sync.WaitGroup
 }
@@ -100,52 +102,61 @@ func WrapTopic(t *pubsub.Topic, b *blob.Bucket, topts TopicOptions) Topic {
 
 func (t *bufTopic) Send(ctx context.Context, m *claimcheck.Message) error {
 	t.mu.Lock()
-	defer t.mu.Unlock()
 	if t.closed {
+		t.mu.Unlock()
 		return ErrTopicClosed
 	}
 	if t.opts.MinSize > 0 && len(m.Body) < t.opts.MinSize {
-		return t.sendInlineLocked(ctx, m)
+		t.mu.Unlock()
+		return t.topic.Send(ctx, &pubsub.Message{Body: m.Body, Metadata: m.Metadata})
 	}
 	t.buf = append(t.buf, m)
 	t.bufBytes += len(m.Body)
-	if (t.maxMessages > 0 && len(t.buf) >= t.maxMessages) ||
-		(t.maxBytes > 0 && t.bufBytes >= t.maxBytes) {
-		return t.flushLocked(ctx)
+	needsFlush := (t.maxMessages > 0 && len(t.buf) >= t.maxMessages) ||
+		(t.maxBytes > 0 && t.bufBytes >= t.maxBytes)
+	t.mu.Unlock()
+
+	if needsFlush {
+		return t.Flush(ctx)
 	}
 	return nil
-}
-
-// sendInlineLocked publishes m as a plain pub/sub message — body and metadata,
-// no control-message metadata and no blob. The consumer parses no control
-// message and yields an inline Batch. Used for messages smaller than MinSize.
-// Callers must hold t.mu.
-func (t *bufTopic) sendInlineLocked(ctx context.Context, m *claimcheck.Message) error {
-	return t.topic.Send(ctx, &pubsub.Message{Body: m.Body, Metadata: m.Metadata})
 }
 
 func (t *bufTopic) Flush(ctx context.Context) error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return t.flushLocked(ctx)
-}
+	t.flushMu.Lock()
+	defer t.flushMu.Unlock()
 
-// flushLocked offloads the buffer and publishes one control message. The buffer
-// is retained on error so messages are not lost. Callers must hold t.mu.
-func (t *bufTopic) flushLocked(ctx context.Context) error {
+	t.mu.Lock()
 	if len(t.buf) == 0 {
+		t.mu.Unlock()
 		return nil
 	}
-	cm, err := claimcheck.Offload(ctx, t.bucket, t.opts, t.buf)
+	buf := t.buf
+	t.buf = nil
+	t.bufBytes = 0
+	t.mu.Unlock()
+
+	cm, err := claimcheck.Offload(ctx, t.bucket, t.opts, buf)
 	if err != nil {
+		t.restoreBuffer(buf)
 		return err
 	}
 	if err := t.topic.Send(ctx, &pubsub.Message{Metadata: cm.ToMetadata(t.opts.MetadataPrefix)}); err != nil {
-		return errors.Join(err, claimcheck.Delete(ctx, t.bucket, cm))
+		err = errors.Join(err, claimcheck.Delete(ctx, t.bucket, cm))
+		t.restoreBuffer(buf)
+		return err
 	}
-	t.buf = nil
-	t.bufBytes = 0
 	return nil
+}
+
+func (t *bufTopic) restoreBuffer(failedBuf []*claimcheck.Message) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.buf = append(failedBuf, t.buf...)
+	t.bufBytes = 0
+	for _, m := range t.buf {
+		t.bufBytes += len(m.Body)
+	}
 }
 
 // flushContext returns the context for a periodic flush. It is bounded by
@@ -167,11 +178,9 @@ func (t *bufTopic) flushLoop(interval time.Duration) {
 		case <-t.stop:
 			return
 		case <-ticker.C:
-			t.mu.Lock()
 			ctx, cancel := t.flushContext()
-			_ = t.flushLocked(ctx)
+			_ = t.Flush(ctx)
 			cancel()
-			t.mu.Unlock()
 		}
 	}
 }
@@ -190,10 +199,7 @@ func (t *bufTopic) Shutdown(ctx context.Context) error {
 		t.wg.Wait()
 	}
 
-	t.mu.Lock()
-	flushErr := t.flushLocked(ctx)
-	t.mu.Unlock()
-
+	flushErr := t.Flush(ctx)
 	shutErr := t.topic.Shutdown(ctx)
 	return errors.Join(flushErr, shutErr)
 }
