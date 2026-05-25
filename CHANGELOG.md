@@ -2,6 +2,38 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.0] - 2026-05-25
+
+### Bug Fixes
+
+- Avoid redundant Attributes call and prevent orphaned blobs in Offload
+- Optimize LengthPrefixedSerializer and fix README example
+- Fail closed when VerifyChecksum is set but no usable MD5 is available
+- Surface corrupt and unsupported control messages instead of silent inline
+- Make MemSubscription.Push safe after Shutdown
+- Bound zero-config buffer and decouple periodic flush timeout from interval
+
+### Documentation
+
+- Fix checksum claim, retitle AGENTS.md, note producer concurrency limit
+
+### Security
+
+- Generate SLSA build provenance for releases
+
+## [0.5.0] - 2026-05-25
+
+### Bug Fixes
+
+- Add timeout to background flush to prevent deadlock
+- Only verify checksum on EOF to prevent error masking
+- Ensure topic shuts down even if flush fails
+- Address various edge cases and coverage gaps
+
+### Miscellaneous Tasks
+
+- Update changelog for v0.5.0
+
 ## [0.4.0] - 2026-05-24
 
 ### Documentation
@@ -15,6 +47,7 @@ All notable changes to this project will be documented in this file.
 ### Miscellaneous Tasks
 
 - Update changelog
+- Release v0.4.0
 
 ### Testing
 

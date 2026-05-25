@@ -2,6 +2,8 @@ package claimcheck_test
 
 import (
 	"context"
+	"errors"
+	"io"
 	"testing"
 	"time"
 
@@ -26,9 +28,67 @@ func TestOffload(t *testing.T) {
 	require.Empty(t, cm.ContentEncoding)
 	require.Positive(t, cm.FileSize)
 
+	_, err = time.Parse(time.RFC3339, cm.CreatedAt)
+	require.NoError(t, err, "CreatedAt must be RFC3339")
+
 	exists, err := bucket.Exists(context.Background(), cm.Key)
 	require.NoError(t, err)
 	require.True(t, exists)
+}
+
+type faultyTransformer struct{ claimcheck.NoopTransformer }
+
+func (f faultyTransformer) ContentEncoding() string { return "" }
+
+func (f faultyTransformer) WrapWriter(w io.Writer) (io.WriteCloser, error) {
+	return faultyWriteCloser{w}, nil
+}
+
+type faultyWriteCloser struct{ io.Writer }
+
+func (f faultyWriteCloser) Write(p []byte) (int, error) { return 0, errors.New("write error") }
+func (f faultyWriteCloser) Close() error                { return errors.New("close error") }
+
+func TestOffload_Errors(t *testing.T) {
+	ctx := context.Background()
+	bucket := memblob.OpenBucket(nil)
+	t.Cleanup(func() { _ = bucket.Close() })
+
+	// 1. Encode error
+	_, err := claimcheck.Offload(ctx, bucket, claimcheck.Options{Transformer: &faultyTransformer{}}, []*claimcheck.Message{{Body: []byte("x")}})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "write error")
+
+	// 2. WrapWriter error (using a transformer that returns error immediately)
+	_, err = claimcheck.Offload(ctx, bucket, claimcheck.Options{Transformer: &errTransformer{}}, []*claimcheck.Message{{Body: []byte("x")}})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "wrap error")
+
+	// 3. Writer Close error (can't easily trigger bucket.NewWriter Close error with memblob,
+	// but we can trigger transformer Close error with faultyTransformer if Encode succeeded but Close failed)
+	_, err = claimcheck.Offload(ctx, bucket, claimcheck.Options{Transformer: &closeFaultyTransformer{}}, []*claimcheck.Message{{Body: []byte("x")}})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "close error")
+}
+
+type closeFaultyTransformer struct{ claimcheck.NoopTransformer }
+
+func (f closeFaultyTransformer) ContentEncoding() string { return "" }
+
+func (f closeFaultyTransformer) WrapWriter(w io.Writer) (io.WriteCloser, error) {
+	return closeFaultyWriteCloser{w}, nil
+}
+
+type closeFaultyWriteCloser struct{ io.Writer }
+
+func (f closeFaultyWriteCloser) Close() error { return errors.New("close error") }
+
+type errTransformer struct{ claimcheck.NoopTransformer }
+
+func (e errTransformer) ContentEncoding() string { return "" }
+
+func (e errTransformer) WrapWriter(w io.Writer) (io.WriteCloser, error) {
+	return nil, errors.New("wrap error")
 }
 
 func TestOffloadInjectsCreatedAt(t *testing.T) {

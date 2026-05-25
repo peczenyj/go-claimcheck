@@ -13,8 +13,8 @@ import (
 	"gocloud.dev/blob"
 )
 
-// ErrBatchTooLarge is returned when a blob exceeds the configured MaxBatchSize.
-var ErrBatchTooLarge = errors.New("claimcheck: blob exceeds MaxBatchSize")
+// ErrBatchTooLarge is returned when a blob exceeds the configured MaxDownloadSize.
+var ErrBatchTooLarge = errors.New("claimcheck: blob exceeds MaxDownloadSize")
 
 // ErrChecksumMismatch is returned by a verifying read when the blob MD5 does
 // not match the control message checksum.
@@ -34,7 +34,9 @@ func Open(ctx context.Context, bucket *blob.Bucket, cm ControlMessage, opts Opti
 	start := time.Now()
 
 	if opts.VerifyChecksum && !isHexMD5(cm.Checksum) {
-		return nil, nil, fireReadErr(ctx, opts, cm, start, ErrChecksumUnavailable)
+		if !opts.AllowMissingChecksum {
+			return nil, nil, fireReadErr(ctx, opts, cm, start, ErrChecksumUnavailable)
+		}
 	}
 
 	r, err := bucket.NewReader(ctx, cm.Key, nil)
@@ -43,8 +45,8 @@ func Open(ctx context.Context, bucket *blob.Bucket, cm ControlMessage, opts Opti
 	}
 
 	var raw io.Reader = r
-	if opts.MaxBatchSize > 0 {
-		raw = &limitedReader{r: raw, remaining: int64(opts.MaxBatchSize)}
+	if opts.MaxDownloadSize > 0 {
+		raw = &limitedReader{r: raw, remaining: int64(opts.MaxDownloadSize)}
 	}
 
 	verify := opts.VerifyChecksum && isHexMD5(cm.Checksum)

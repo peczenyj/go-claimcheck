@@ -87,6 +87,10 @@ func (d *jsonLinesDecoder) Decode(buf []*Message) (int, error) {
 }
 
 // LengthPrefixedSerializer encodes messages with a uint32 big-endian length prefix.
+//
+// Deprecated: This serializer wraps JSON encoding in a length prefix, which is
+// inefficient and duplicates functionality. Use JSONLinesSerializer, or supply
+// a custom Transformer for compression/encryption.
 type LengthPrefixedSerializer struct{}
 
 func NewLengthPrefixedSerializer() *LengthPrefixedSerializer { return &LengthPrefixedSerializer{} }

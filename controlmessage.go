@@ -14,6 +14,7 @@ const (
 	fieldContentEncoding = "content_encoding"
 	fieldFileSize        = "file_size"
 	fieldChecksum        = "checksum"
+	fieldCreatedAt       = "created_at"
 )
 
 // ControlMessage is the standard claim-check envelope carried in a pubsub
@@ -26,6 +27,7 @@ type ControlMessage struct {
 	ContentEncoding string
 	FileSize        int64
 	Checksum        string
+	CreatedAt       string
 }
 
 // ToMetadata renders the control message as a metadata map, prefixing each key
@@ -39,6 +41,7 @@ func (c ControlMessage) ToMetadata(prefix string) map[string]string {
 		prefix + fieldContentEncoding: c.ContentEncoding,
 		prefix + fieldFileSize:        strconv.FormatInt(c.FileSize, 10),
 		prefix + fieldChecksum:        c.Checksum,
+		prefix + fieldCreatedAt:       c.CreatedAt,
 	}
 }
 
@@ -77,5 +80,6 @@ func ParseControlMessage(md map[string]string, prefix string) (ControlMessage, b
 		ContentEncoding: md[prefix+fieldContentEncoding],
 		FileSize:        size,
 		Checksum:        md[prefix+fieldChecksum],
+		CreatedAt:       md[prefix+fieldCreatedAt],
 	}, true
 }

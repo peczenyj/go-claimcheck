@@ -3,6 +3,7 @@ package claimcheck
 import (
 	"context"
 	"crypto/md5"
+	"errors"
 	"fmt"
 	"hash"
 	"io"
@@ -32,10 +33,11 @@ func Offload(ctx context.Context, bucket *blob.Bucket, opts Options, msgs []*Mes
 	}()
 
 	var blobMeta map[string]string
+	now := time.Now().UTC().Format(time.RFC3339)
 	if opts.InjectBlobMetadata {
 		blobMeta = map[string]string{
 			"msg_count":  strconv.Itoa(len(msgs)),
-			"created_at": time.Now().UTC().Format(time.RFC3339),
+			"created_at": now,
 		}
 	}
 
@@ -53,25 +55,25 @@ func Offload(ctx context.Context, bucket *blob.Bucket, opts Options, msgs []*Mes
 	tw, err := opts.Transformer.WrapWriter(twrapper)
 	if err != nil {
 		_ = w.Close()
-		_ = bucket.Delete(ctx, key)
-		return ControlMessage{}, fmt.Errorf("claimcheck: wrap writer: %w", err)
+		delErr := bucket.Delete(ctx, key)
+		return ControlMessage{}, errors.Join(fmt.Errorf("claimcheck: wrap writer: %w", err), delErr)
 	}
 
 	if err := opts.Serializer.Encode(tw, msgs); err != nil {
 		_ = tw.Close()
 		_ = w.Close()
-		_ = bucket.Delete(ctx, key)
-		return ControlMessage{}, fmt.Errorf("claimcheck: encode messages: %w", err)
+		delErr := bucket.Delete(ctx, key)
+		return ControlMessage{}, errors.Join(fmt.Errorf("claimcheck: encode messages: %w", err), delErr)
 	}
 
 	if err := tw.Close(); err != nil {
 		_ = w.Close()
-		_ = bucket.Delete(ctx, key)
-		return ControlMessage{}, fmt.Errorf("claimcheck: close transformer: %w", err)
+		delErr := bucket.Delete(ctx, key)
+		return ControlMessage{}, errors.Join(fmt.Errorf("claimcheck: close transformer: %w", err), delErr)
 	}
 	if err := w.Close(); err != nil {
-		_ = bucket.Delete(ctx, key)
-		return ControlMessage{}, fmt.Errorf("claimcheck: close blob writer: %w", err)
+		delErr := bucket.Delete(ctx, key)
+		return ControlMessage{}, errors.Join(fmt.Errorf("claimcheck: close blob writer: %w", err), delErr)
 	}
 
 	return ControlMessage{
@@ -82,6 +84,7 @@ func Offload(ctx context.Context, bucket *blob.Bucket, opts Options, msgs []*Mes
 		ContentEncoding: opts.Transformer.ContentEncoding(),
 		FileSize:        twrapper.n,
 		Checksum:        fmt.Sprintf("%x", twrapper.h.Sum(nil)),
+		CreatedAt:       now,
 	}, nil
 }
 

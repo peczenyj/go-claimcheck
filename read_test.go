@@ -40,6 +40,18 @@ func TestRead_MaxBatchSize(t *testing.T) {
 	require.ErrorIs(t, err, claimcheck.ErrBatchTooLarge)
 }
 
+func TestRead_MaxDownloadSize(t *testing.T) {
+	bucket := memblob.OpenBucket(nil)
+	t.Cleanup(func() { _ = bucket.Close() })
+	ctx := context.Background()
+
+	cm, err := claimcheck.Offload(ctx, bucket, claimcheck.Options{}, []*claimcheck.Message{{Body: []byte("a sizable body of bytes")}})
+	require.NoError(t, err)
+
+	_, err = claimcheck.Read(ctx, bucket, cm, claimcheck.Options{MaxDownloadSize: 4})
+	require.ErrorIs(t, err, claimcheck.ErrBatchTooLarge)
+}
+
 func TestRead_VerifyChecksum_OK(t *testing.T) {
 	bucket := memblob.OpenBucket(nil)
 	t.Cleanup(func() { _ = bucket.Close() })
@@ -85,6 +97,25 @@ func TestRead_VerifyChecksum_UnavailableErrors(t *testing.T) {
 
 	_, err = claimcheck.Read(ctx, bucket, cm, claimcheck.Options{VerifyChecksum: true})
 	require.ErrorIs(t, err, claimcheck.ErrChecksumUnavailable)
+}
+
+func TestRead_VerifyChecksum_AllowMissing(t *testing.T) {
+	bucket := memblob.OpenBucket(nil)
+	t.Cleanup(func() { _ = bucket.Close() })
+	ctx := context.Background()
+
+	cm, err := claimcheck.Offload(ctx, bucket, claimcheck.Options{}, []*claimcheck.Message{{Body: []byte("ok")}})
+	require.NoError(t, err)
+	cm.Checksum = "" // no MD5 available
+
+	// Fails by default
+	_, err = claimcheck.Read(ctx, bucket, cm, claimcheck.Options{VerifyChecksum: true})
+	require.ErrorIs(t, err, claimcheck.ErrChecksumUnavailable)
+
+	// Succeeds when AllowMissingChecksum is true
+	out, err := claimcheck.Read(ctx, bucket, cm, claimcheck.Options{VerifyChecksum: true, AllowMissingChecksum: true})
+	require.NoError(t, err)
+	require.Len(t, out, 1)
 }
 
 // https://github.com/peczenyj/go-claimcheck/issues/51
