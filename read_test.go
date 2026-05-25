@@ -70,16 +70,49 @@ func TestRead_VerifyChecksum_Mismatch(t *testing.T) {
 	require.ErrorIs(t, err, claimcheck.ErrChecksumMismatch)
 }
 
-func TestRead_VerifyChecksum_SkippedWhenAbsent(t *testing.T) {
+// https://github.com/peczenyj/go-claimcheck/issues/51
+// Verification was requested but the control message has no usable MD5 (e.g. an
+// S3 multipart upload populates no MD5). Fail closed rather than silently
+// skipping verification.
+func TestRead_VerifyChecksum_UnavailableErrors(t *testing.T) {
 	bucket := memblob.OpenBucket(nil)
 	t.Cleanup(func() { _ = bucket.Close() })
 	ctx := context.Background()
 
 	cm, err := claimcheck.Offload(ctx, bucket, claimcheck.Options{}, []*claimcheck.Message{{Body: []byte("ok")}})
 	require.NoError(t, err)
-	cm.Checksum = "" // no MD5 available (e.g. multipart)
+	cm.Checksum = "" // no MD5 available
 
-	out, err := claimcheck.Read(ctx, bucket, cm, claimcheck.Options{VerifyChecksum: true})
+	_, err = claimcheck.Read(ctx, bucket, cm, claimcheck.Options{VerifyChecksum: true})
+	require.ErrorIs(t, err, claimcheck.ErrChecksumUnavailable)
+}
+
+// https://github.com/peczenyj/go-claimcheck/issues/51
+// A non-hex-MD5 checksum (e.g. a multipart ETag "<hex>-<n>") is unverifiable too.
+func TestRead_VerifyChecksum_NonHexErrors(t *testing.T) {
+	bucket := memblob.OpenBucket(nil)
+	t.Cleanup(func() { _ = bucket.Close() })
+	ctx := context.Background()
+
+	cm, err := claimcheck.Offload(ctx, bucket, claimcheck.Options{}, []*claimcheck.Message{{Body: []byte("ok")}})
+	require.NoError(t, err)
+	cm.Checksum = "d41d8cd98f00b204e9800998ecf8427e-2" // multipart-style ETag
+
+	_, err = claimcheck.Read(ctx, bucket, cm, claimcheck.Options{VerifyChecksum: true})
+	require.ErrorIs(t, err, claimcheck.ErrChecksumUnavailable)
+}
+
+// Without VerifyChecksum, a missing MD5 is fine — reads are unaffected.
+func TestRead_NoVerify_MissingChecksumOK(t *testing.T) {
+	bucket := memblob.OpenBucket(nil)
+	t.Cleanup(func() { _ = bucket.Close() })
+	ctx := context.Background()
+
+	cm, err := claimcheck.Offload(ctx, bucket, claimcheck.Options{}, []*claimcheck.Message{{Body: []byte("ok")}})
+	require.NoError(t, err)
+	cm.Checksum = ""
+
+	out, err := claimcheck.Read(ctx, bucket, cm, claimcheck.Options{})
 	require.NoError(t, err)
 	require.Len(t, out, 1)
 }
