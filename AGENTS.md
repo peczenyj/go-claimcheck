@@ -1,6 +1,6 @@
-# Gemini CLI Context: go-claimcheck
+# Agent Context: go-claimcheck
 
-This document provides architectural overview, development workflows, and coding conventions for the `go-claimcheck` project.
+This document provides an architectural overview, development workflows, and coding conventions for the `go-claimcheck` project, for any coding agent or contributor.
 
 ## Project Overview
 
