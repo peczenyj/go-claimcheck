@@ -42,6 +42,7 @@ The project uses [Task](https://taskfile.dev/) for workflow automation. A `Makef
 | :--- | :--- |
 | `task test` | Runs all tests using `gotestsum`. |
 | `task lint` | Executes `golangci-lint` with the project's configuration. |
+| `task consistent` | Checks code-pattern consistency with `go-consistent`. |
 | `task format` | Formats the codebase using `golangci-lint --fix` (includes `gofumpt`, `goimports`, `gci`). |
 | `task tidy` | Runs `go mod tidy` to clean up dependencies. |
 | `task changelog` | Generates `CHANGELOG.md` using `git-cliff`. |
@@ -50,6 +51,7 @@ The project uses [Task](https://taskfile.dev/) for workflow automation. A `Makef
 
 - Go 1.25+
 - `golangci-lint`
+- `go-consistent` (`go install github.com/quasilyte/go-consistent@latest`)
 - `gotestsum` (optional, for formatted output)
 - `task` (Taskfile runner)
 
