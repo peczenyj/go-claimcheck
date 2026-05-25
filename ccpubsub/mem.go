@@ -63,7 +63,7 @@ func (m *MemSubscription) Receive(ctx context.Context) (*Batch, error) {
 		if !ok && claimcheck.HasControlMessageMetadata(it.metadata, m.opts.MetadataPrefix) {
 			return nil, ErrCorruptControlMessage
 		}
-		return newBatch(cm, it.body, it.metadata, m.bucket, m.opts, func() {}, func() {}, false), nil
+		return newBatch(cm, it.body, it.metadata, m.bucket, m.opts, func() {}, func() {}, false, nil), nil
 	}
 }
 
