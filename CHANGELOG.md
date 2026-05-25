@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [unreleased]
+
+### Bug Fixes
+
+- Add timeout to background flush to prevent deadlock
+- Only verify checksum on EOF to prevent error masking
+- Ensure topic shuts down even if flush fails
+- Address various edge cases and coverage gaps
+
 ## [0.4.0] - 2026-05-24
 
 ### Documentation
@@ -15,6 +24,7 @@ All notable changes to this project will be documented in this file.
 ### Miscellaneous Tasks
 
 - Update changelog
+- Release v0.4.0
 
 ### Testing
 
