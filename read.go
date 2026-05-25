@@ -20,12 +20,22 @@ var ErrBatchTooLarge = errors.New("claimcheck: blob exceeds MaxBatchSize")
 // not match the control message checksum.
 var ErrChecksumMismatch = errors.New("claimcheck: blob checksum mismatch")
 
+// ErrChecksumUnavailable is returned when VerifyChecksum is set but the control
+// message carries no usable hex MD5 to verify against (for example an S3
+// multipart upload, a GCS composite object, or an unset Content-MD5). The read
+// fails closed rather than silently skipping verification the caller asked for.
+var ErrChecksumUnavailable = errors.New("claimcheck: checksum verification requested but control message has no usable MD5")
+
 // Open opens the blob named by cm and returns a streaming Decoder over its
 // messages plus an io.Closer the caller MUST close when done. opts size caps
 // and (when enabled) MD5 verification are applied.
 func Open(ctx context.Context, bucket *blob.Bucket, cm ControlMessage, opts Options) (Decoder, io.Closer, error) {
 	opts.SetDefaults()
 	start := time.Now()
+
+	if opts.VerifyChecksum && !isHexMD5(cm.Checksum) {
+		return nil, nil, fireReadErr(ctx, opts, cm, start, ErrChecksumUnavailable)
+	}
 
 	r, err := bucket.NewReader(ctx, cm.Key, nil)
 	if err != nil {
