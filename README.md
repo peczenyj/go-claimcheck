@@ -20,7 +20,7 @@ Powered by [Go CDK](https://gocloud.dev/) for total provider portability.
 - **Blob-level delivery:** the consumer `Batch` acknowledges or negatively-acknowledges a whole offloaded blob — the natural unit of delivery for this pattern.
 - **Pluggable Serialization:** built-in NDJSON (JSON Lines) and length-prefixed binary, both streaming for bounded-memory reads.
 - **Data Transformation:** built-in Gzip and Zstd compression middleware.
-- **Rich Metadata:** tracks checksum (MD5), file size, content type/encoding, and message count on every control message.
+- **Rich Metadata:** tracks file size, content type/encoding, and message count on every control message, plus a best-effort MD5 checksum. The checksum is backend-dependent — some stores do not expose an object MD5 (e.g. S3 multipart uploads, GCS composite objects, Azure without Content-MD5); when it is absent, `VerifyChecksum` fails closed with `ErrChecksumUnavailable` rather than reading unverified.
 - **Provider Agnostic:** works with any Pub/Sub and Blob storage supported by [Go CDK](https://gocloud.dev/).
 
 ## Installation
@@ -372,6 +372,15 @@ GCS:
 The producer also self-cleans: if publishing the control message fails after the
 blob is written, the buffering `WrapTopic` deletes the orphaned blob before
 returning the error.
+
+## Known limitations
+
+- **Producer I/O is serialized.** `WrapTopic` performs the blob write and the
+  control-message publish while holding its internal lock, so concurrent `Send`
+  calls block for the duration of a flush. This bounds producer throughput under
+  heavy concurrency; see
+  [#53](https://github.com/peczenyj/go-claimcheck/issues/53). If you need higher
+  concurrency today, run multiple `WrapTopic` instances or shard producers.
 
 ## Development
 
